@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blankr – Whiteboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="toolbar">
+    <div class="toolbar-group">
+      <button id="btn-pen" class="tool-btn active" title="Stift">✏️</button>
+      <button id="btn-eraser" class="tool-btn" title="Radierer">🧹</button>
+    </div>
+
+    <div class="toolbar-group">
+      <label for="color-picker" class="toolbar-label">Farbe</label>
+      <input type="color" id="color-picker" value="#000000">
+    </div>
+
+    <div class="toolbar-group">
+      <label for="size-slider" class="toolbar-label">Größe</label>
+      <input type="range" id="size-slider" min="1" max="50" value="3">
+      <span id="size-value">3</span>
+    </div>
+
+    <div class="toolbar-group">
+      <button id="btn-undo" class="tool-btn" title="Rückgängig">↩️</button>
+      <button id="btn-redo" class="tool-btn" title="Wiederholen">↪️</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button id="btn-clear" class="tool-btn" title="Alles löschen">🗑️</button>
+      <button id="btn-download" class="tool-btn" title="Herunterladen">💾</button>
+    </div>
+  </div>
+
+  <canvas id="whiteboard"></canvas>
+
+  <script src="app.js"></script>
+</body>
+</html>
