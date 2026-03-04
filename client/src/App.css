@@ -109,10 +109,20 @@ html, body {
 .ui-tools {
   top: 50%; left: 16px;
   transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 8px 6px;
+  display: flex; flex-direction: column; gap: 0;
+  padding: 6px;
   border-radius: var(--radius);
   animation: toolsFade .4s .05s cubic-bezier(.16,1,.3,1) both;
+}
+.t-group {
+  display: flex; flex-direction: column; gap: 1px;
+}
+.t-sep {
+  display: block;
+  width: 24px; height: 1px;
+  margin: 4px auto;
+  background: var(--border);
+  font-style: normal;
 }
 
 .t-btn {
