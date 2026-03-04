@@ -1,761 +1,1092 @@
-/* ═══════════════════════════════════════
-   Canvas — Event Handlers
-   Sets up all pointer/keyboard/touch
-   events and the render loop.
-   Returns a cleanup function.
-   ═══════════════════════════════════════ */
+// Canvas - Event Handlers & Render Loop
 
-import { CONNECTOR_SNAP_DIST, LASER_FADE_MS } from './constants.js';
+import { getState, setState } from '../../store.js';
 import {
-  getBBox, getCenter, getConnectorAnchors, rotatePoint,
-  moveStroke, resizeStroke, moveEndpoint, isLineLike,
+  LASER_FADE_MS, HANDLE_SIZE, CONNECTOR_SNAP_DIST,
+  ENDPOINT_HIT_RADIUS, SNAP_THRESHOLD, NUDGE_STEP, NUDGE_STEP_LARGE, GRID_SIZE
+} from './constants.js';
+import {
+  drawBackground, renderStroke, drawSelectionBox,
+  drawRubberBand, drawAlignGuides, adaptColor
+} from './render.js';
+import {
+  getBBox, getCenter, getConnectorAnchors, moveStroke,
+  resizeStroke, moveEndpoint, isLineLike, snapToGrid, computeAlignGuides
 } from './geometry.js';
 import { hitTest, hitHandle, handleCursor } from './hitTest.js';
-import { drawBackground, renderStroke, drawSelectionBox } from './render.js';
-import { getState, setState, subscribe, pushUndo, scheduleAutosave, showToast } from '../../store';
-import * as collab from '../../collab';
+import { sendStroke, sendCursor, sendClear, sendUndo } from '../../collab.js';
 
-/**
- * Initialise all canvas interaction.
- * @param {HTMLCanvasElement} cvs
- * @param {Function} setTextEdit — React state setter for the text input overlay
- * @returns {Function} cleanup
- */
-export function setupCanvasEvents(cvs, setTextEdit) {
-  const ctx = cvs.getContext('2d');
-  const off = document.createElement('canvas');
-  const offCtx = off.getContext('2d');
-  const imgCache = new Map();
+export function setupCanvasEvents(canvas, setTextEdit) {
+  const offscreen = document.createElement('canvas');
+  const ctx = offscreen.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  let W, H;
+  let needsRender = true;
 
-  /* ── Mutable local state ── */
-  let drawing = false, currentStroke = null;
-  let panning = false, panSX = 0, panSY = 0, panVX = 0, panVY = 0;
+  // ---- mutable local state ----
+  let drawing = false;
+  let currentStroke = null;
+  let panning = false;
+  let panStartX = 0, panStartY = 0, panViewX = 0, panViewY = 0;
   let spaceDown = false;
   let laserTrails = [];
-  let needsRender = true;
-  let pinchActive = false, pinchD0 = 0, pinchS0 = 1;
-  let dpr = 1;
+  let pinchActive = false;
+  let pinchStartDist = 0, pinchStartScale = 1;
 
-  // Select state
-  let dragging = false, dragStartWX = 0, dragStartWY = 0;
-  let dragOrigStroke = null;
-  let resizingHandle = null, resizeOrigBB = null;
+  // Selection / drag
+  let dragging = false;
+  let dragStartWX = 0, dragStartWY = 0;
+  let dragOrigStrokes = new Map(); // idx -> deep-cloned original
+
+  let resizingHandle = null;
+  let resizeOrigBB = null;
+  let resizeOrigStroke = null;
+
   let endpointDragging = null; // 'p1' | 'p2'
-  let rotating = false, rotateStartAngle = 0, rotateOrigRotation = 0;
+  let endpointOrigStroke = null;
 
-  // Eraser state (object eraser)
+  let rotating = false;
+  let rotateOrigAngle = 0;
+  let rotateOrigStroke = null;
+
   let erasing = false;
-  let erasedIndices = new Set();
-
-  // Connector state
   let connectorStart = null;
 
-  /* ── Helpers ── */
-  function resize() {
-    dpr = window.devicePixelRatio || 1;
-    const w = window.innerWidth, h = window.innerHeight;
-    cvs.width = w * dpr;
-    cvs.height = h * dpr;
-    cvs.style.width = w + 'px';
-    cvs.style.height = h + 'px';
-    off.width = w * dpr;
-    off.height = h * dpr;
-    needsRender = true;
-  }
+  // Rubber band
+  let rubberBand = null; // {sx,sy,x,y,w,h}
 
-  function screenToWorld(sx, sy) {
+  // Alignment guides (recomputed each drag-move)
+  let alignGuides = [];
+
+  // ---- helpers ----
+  function toWorld(sx, sy) {
     const v = getState().view;
-    return { x: (sx - v.x) / v.scale, y: (sy - v.y) / v.scale };
+    return { x: sx / v.scale - v.x, y: sy / v.scale - v.y };
   }
 
-  function ptrPos(e) {
-    const r = cvs.getBoundingClientRect();
-    if (e.touches?.length)
-      return { sx: e.touches[0].clientX - r.left, sy: e.touches[0].clientY - r.top };
-    return { sx: e.clientX - r.left, sy: e.clientY - r.top };
-  }
-
-  // Custom red-dot cursor for the laser tool
-  const laserSVG = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='10' cy='10' r='5' fill='red' opacity='0.85'/%3E%3Ccircle cx='10' cy='10' r='3' fill='white' opacity='0.6'/%3E%3C/svg%3E") 10 10, crosshair`;
-
-  function setCursor() {
-    const t = getState().tool;
-    const map = {
-      select: 'default', connector: 'crosshair',
-      pen: 'crosshair', line: 'crosshair', arrow: 'crosshair',
-      rect: 'crosshair', circle: 'crosshair', text: 'text',
-      eraser: 'cell', laser: laserSVG, hand: 'grab',
-    };
-    cvs.style.cursor = spaceDown ? 'grab' : (map[t] || 'crosshair');
-  }
-
-  function getImage(url) {
-    if (!url) return null;
-    if (imgCache.has(url)) return imgCache.get(url);
-    const img = new Image();
-    img.onload = () => { imgCache.set(url, img); needsRender = true; };
-    img.src = url;
-    imgCache.set(url, null);
-    return null;
-  }
-
-  function updateLayer(idx, stroke) {
+  function getStrokes() {
     const st = getState();
-    const layers = st.layers.map((l, li) => {
-      if (li !== st.activeLayer) return l;
-      const strokes = [...l.strokes];
-      strokes[idx] = stroke;
-      return { ...l, strokes };
-    });
-    setState({ layers });
+    return st.layers[st.activeLayer]?.strokes || [];
   }
 
-  /** Object eraser: remove any stroke under (wx, wy). */
-  function eraseAt(wx, wy) {
-    const st = getState();
-    const strokes = st.layers[st.activeLayer]?.strokes || [];
-    let changed = false;
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      if (erasedIndices.has(i)) continue;
-      if (hitTest(strokes[i], wx, wy)) {
-        erasedIndices.add(i);
-        changed = true;
+  function snapVal(v) {
+    return snapToGrid(v, getState().gridSnap);
+  }
+
+  /** Expand selection to include all group members */
+  function expandGroup(indices, strokes) {
+    const set = new Set(indices);
+    for (const idx of indices) {
+      const s = strokes[idx];
+      if (s && s.groupId) {
+        for (let i = 0; i < strokes.length; i++) {
+          if (strokes[i] && strokes[i].groupId === s.groupId) set.add(i);
+        }
       }
     }
-    if (changed) {
-      const layers = st.layers.map((l, li) => {
-        if (li !== st.activeLayer) return l;
-        return { ...l, strokes: l.strokes.filter((_, si) => !erasedIndices.has(si)) };
-      });
-      setState({ layers, selectedStrokeIdx: null });
-      // Re-index: after filtering, indices shift, so reset tracking
-      erasedIndices = new Set();
-      needsRender = true;
-    }
+    return [...set];
   }
 
-  /* ═══════════════ RENDER ═══════════════ */
+  function autosave() {
+    try { localStorage.setItem('blankr_save', JSON.stringify(getState().layers)); } catch {}
+  }
+
+  // ================= RENDER =================
   function render() {
-    const state = getState();
-    const { view, layers, selectedStrokeIdx, activeLayer, tool } = state;
-    const w = cvs.width / dpr, h = cvs.height / dpr;
+    if (!needsRender) { requestAnimationFrame(render); return; }
+    needsRender = false;
+    const st = getState();
+    const view = st.view;
+    const dark = st.darkMode;
+    const strokes = st.layers[st.activeLayer]?.strokes || [];
 
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, w, h);
-    drawBackground(ctx, cvs, dpr, state);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    drawBackground(ctx, W, H, view, st.bgPattern, dark);
 
-    // Layers
-    for (const layer of layers) {
-      if (!layer.visible) continue;
-      offCtx.save();
-      offCtx.scale(dpr, dpr);
-      offCtx.clearRect(0, 0, w, h);
-      offCtx.translate(view.x, view.y);
-      offCtx.scale(view.scale, view.scale);
-      const editingIdx = window.__blankr_editingIdx;
-      const isActiveLayer = (layer === layers[activeLayer]);
-      for (let si = 0; si < layer.strokes.length; si++) {
-        // Skip stroke being edited inline (WYSIWYG)
-        if (isActiveLayer && editingIdx != null && si === editingIdx) continue;
-        renderStroke(offCtx, layer.strokes[si], getImage, state.darkMode);
-      }
-      offCtx.restore();
-      ctx.globalAlpha = layer.opacity;
-      ctx.drawImage(off, 0, 0, off.width, off.height, 0, 0, w, h);
-      ctx.globalAlpha = 1;
+    // Committed strokes
+    for (const s of strokes) {
+      if (s) renderStroke(ctx, s, view, dark);
     }
 
-    // Selection overlay
-    if (tool === 'select' && selectedStrokeIdx != null) {
-      const strokes = layers[activeLayer]?.strokes;
-      if (strokes && strokes[selectedStrokeIdx]) {
-        ctx.save();
-        ctx.translate(view.x, view.y);
-        ctx.scale(view.scale, view.scale);
-        drawSelectionBox(ctx, strokes[selectedStrokeIdx], view);
-        ctx.restore();
-      }
+    // In-progress stroke
+    if (currentStroke) renderStroke(ctx, currentStroke, view, dark);
+
+    // Selection boxes
+    for (const idx of st.selectedIdxs) {
+      if (strokes[idx]) drawSelectionBox(ctx, strokes[idx], view);
     }
 
-    // Connector preview
-    if (tool === 'connector' && connectorStart && currentStroke) {
-      ctx.save();
-      ctx.translate(view.x, view.y);
-      ctx.scale(view.scale, view.scale);
-      ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      ctx.moveTo(currentStroke.x1, currentStroke.y1);
-      ctx.lineTo(currentStroke.x2, currentStroke.y2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
+    // Rubber band
+    if (rubberBand) drawRubberBand(ctx, rubberBand, view);
 
-    // Current stroke preview
-    if (currentStroke && !connectorStart) {
-      ctx.save();
-      ctx.translate(view.x, view.y);
-      ctx.scale(view.scale, view.scale);
-      renderStroke(ctx, currentStroke, getImage, state.darkMode);
-      ctx.restore();
-    }
+    // Alignment guides
+    if (alignGuides.length) drawAlignGuides(ctx, alignGuides, view, W, H);
 
-    // Laser
+    // Laser trails
     const now = Date.now();
-    laserTrails = laserTrails.filter(p => now - p.time < LASER_FADE_MS);
-    if (laserTrails.length) {
+    laserTrails = laserTrails.filter(t => now - t.time < LASER_FADE_MS);
+    for (const t of laserTrails) {
+      const alpha = 1 - (now - t.time) / LASER_FADE_MS;
       ctx.save();
-      ctx.translate(view.x, view.y);
-      ctx.scale(view.scale, view.scale);
-      for (const p of laserTrails) {
-        const age = (now - p.time) / LASER_FADE_MS;
-        ctx.globalAlpha = 1 - age;
-        const r = 4 * (1 + age * 0.5);
-        ctx.fillStyle = '#ff3333';
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(255,50,50,0.25)';
-        ctx.beginPath(); ctx.arc(p.x, p.y, r * 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = '#f44336';
+      ctx.lineWidth = 3 * view.scale;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (t.points.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo((t.points[0].x + view.x) * view.scale, (t.points[0].y + view.y) * view.scale);
+        for (let j = 1; j < t.points.length; j++)
+          ctx.lineTo((t.points[j].x + view.x) * view.scale, (t.points[j].y + view.y) * view.scale);
+        ctx.stroke();
       }
-      ctx.globalAlpha = 1;
       ctx.restore();
     }
 
-    ctx.restore();
+    // Remote cursors
+    for (const [uid, rc] of Object.entries(st.remoteCursors)) {
+      const sx = (rc.x + view.x) * view.scale;
+      const sy = (rc.y + view.y) * view.scale;
+      ctx.save();
+      ctx.fillStyle = rc.color || '#ff9800';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + 4, sy + 14);
+      ctx.lineTo(sx + 10, sy + 10);
+      ctx.closePath();
+      ctx.fill();
+      if (rc.name) {
+        ctx.font = '11px Inter, system-ui, sans-serif';
+        ctx.fillStyle = rc.color || '#ff9800';
+        ctx.fillText(rc.name, sx + 12, sy + 14);
+      }
+      ctx.restore();
+    }
+
+    if (laserTrails.length || Object.keys(st.remoteCursors).length) needsRender = true;
+
+    // Blit
+    const mainCtx = canvas.getContext('2d');
+    mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+    mainCtx.drawImage(offscreen, 0, 0);
+
+    requestAnimationFrame(render);
   }
 
-  /* ═══════════════ POINTER DOWN ═══════════════ */
+  // ================= POINTER DOWN =================
   function onDown(e) {
-    if (e.target !== cvs) return;
-    const { sx, sy } = ptrPos(e);
-    const { x, y } = screenToWorld(sx, sy);
+    if (e.preventDefault) e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * dpr;
+    const sy = (e.clientY - rect.top) * dpr;
+    const w = toWorld(e.clientX - rect.left, e.clientY - rect.top);
     const st = getState();
+    const strokes = getStrokes();
+    const tool = st.tool;
 
-    // Pan (middle button / space / hand tool)
-    if (e.button === 1 || spaceDown || st.tool === 'hand') {
-      panning = true; panSX = sx; panSY = sy;
-      panVX = st.view.x; panVY = st.view.y;
-      cvs.style.cursor = 'grabbing';
-      e.preventDefault(); return;
-    }
-
-    /* ── Select tool ── */
-    if (st.tool === 'select') {
-      e.preventDefault();
-      const strokes = st.layers[st.activeLayer]?.strokes || [];
-
-      // Check handles on currently selected stroke
-      if (st.selectedStrokeIdx != null && strokes[st.selectedStrokeIdx]) {
-        const sel = strokes[st.selectedStrokeIdx];
-        const handle = hitHandle(sel, x, y, st.view.scale);
-
-        if (handle === 'rotate') {
-          rotating = true;
-          const { cx, cy } = getCenter(sel);
-          rotateStartAngle = Math.atan2(y - cy, x - cx);
-          rotateOrigRotation = sel.rotation || 0;
-          dragOrigStroke = JSON.parse(JSON.stringify(sel));
-          cvs.style.cursor = 'crosshair';
-          pushUndo(); needsRender = true;
-          return;
-        }
-
-        // Endpoint handles for line-like strokes
-        if (handle === 'p1' || handle === 'p2') {
-          endpointDragging = handle;
-          dragOrigStroke = JSON.parse(JSON.stringify(sel));
-          cvs.style.cursor = 'pointer';
-          pushUndo(); needsRender = true;
-          return;
-        }
-
-        // Corner resize handles for shapes
-        if (handle) {
-          resizingHandle = handle;
-          resizeOrigBB = getBBox(sel);
-          dragOrigStroke = JSON.parse(JSON.stringify(sel));
-          dragStartWX = x; dragStartWY = y;
-          cvs.style.cursor = handleCursor(handle) || 'nwse-resize';
-          pushUndo(); needsRender = true;
-          return;
-        }
+    // ---- right-click context menu ----
+    if (e.button === 2) {
+      const found = hitTest(strokes, w.x, w.y);
+      if (found >= 0 && !st.selectedIdxs.includes(found)) {
+        setState({ selectedIdxs: expandGroup([found], strokes) });
       }
-
-      // Find stroke under cursor
-      let found = -1;
-      for (let i = strokes.length - 1; i >= 0; i--) {
-        if (hitTest(strokes[i], x, y)) { found = i; break; }
-      }
-      if (found >= 0) {
-        setState({ selectedStrokeIdx: found });
-        dragging = true;
-        dragStartWX = x; dragStartWY = y;
-        dragOrigStroke = JSON.parse(JSON.stringify(strokes[found]));
-        cvs.style.cursor = 'move';
-        pushUndo();
-      } else {
-        setState({ selectedStrokeIdx: null });
-      }
+      setState({ contextMenu: { x: e.clientX, y: e.clientY } });
       needsRender = true;
       return;
     }
 
-    /* ── Connector tool ── */
-    if (st.tool === 'connector') {
-      e.preventDefault();
-      const strokes = st.layers[st.activeLayer]?.strokes || [];
-      let bestDist = CONNECTOR_SNAP_DIST / st.view.scale, bestAnchor = null, bestIdx = -1;
-      for (let i = strokes.length - 1; i >= 0; i--) {
-        if (strokes[i].type === 'connector') continue;
+    // Dismiss context menu
+    if (st.contextMenu) setState({ contextMenu: null });
+
+    // Record world position for potential drag / resize
+    dragStartWX = w.x;
+    dragStartWY = w.y;
+
+    // ---- hand / space pan ----
+    if (tool === 'hand' || spaceDown) {
+      panning = true;
+      panStartX = e.clientX; panStartY = e.clientY;
+      panViewX = st.view.x; panViewY = st.view.y;
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    // ---- SELECT ----
+    if (tool === 'select') {
+      // Check handles on single-selected stroke
+      if (st.selectedIdxs.length === 1) {
+        const idx = st.selectedIdxs[0];
+        const h = hitHandle(strokes, idx, sx, sy, st.view);
+        if (h === 'rotate') {
+          rotating = true;
+          rotateOrigStroke = JSON.parse(JSON.stringify(strokes[idx]));
+          rotateOrigAngle = strokes[idx].rotation || 0;
+          needsRender = true;
+          return;
+        }
+        if (h === 'p1' || h === 'p2') {
+          endpointDragging = h;
+          endpointOrigStroke = JSON.parse(JSON.stringify(strokes[idx]));
+          needsRender = true;
+          return;
+        }
+        if (h) {
+          resizingHandle = h;
+          resizeOrigBB = getBBox(strokes[idx]);
+          resizeOrigStroke = JSON.parse(JSON.stringify(strokes[idx]));
+          needsRender = true;
+          return;
+        }
+      }
+
+      // Hit test strokes
+      const found = hitTest(strokes, w.x, w.y);
+      if (found >= 0) {
+        let newSel;
+        const expanded = expandGroup([found], strokes);
+        if (e.shiftKey) {
+          const current = new Set(st.selectedIdxs);
+          if (current.has(found)) {
+            for (const idx of expanded) current.delete(idx);
+          } else {
+            for (const idx of expanded) current.add(idx);
+          }
+          newSel = [...current];
+        } else if (st.selectedIdxs.includes(found)) {
+          newSel = st.selectedIdxs; // already selected
+        } else {
+          newSel = expanded;
+        }
+        setState({ selectedIdxs: newSel });
+
+        // Start multi-drag
+        dragging = true;
+        dragOrigStrokes.clear();
+        for (const idx of newSel) {
+          if (strokes[idx]) dragOrigStrokes.set(idx, JSON.parse(JSON.stringify(strokes[idx])));
+        }
+        needsRender = true;
+        return;
+      }
+
+      // Empty space: start rubber band or deselect
+      if (!e.shiftKey) setState({ selectedIdxs: [] });
+      rubberBand = { sx: w.x, sy: w.y, x: w.x, y: w.y, w: 0, h: 0 };
+      needsRender = true;
+      return;
+    }
+
+    // ---- ERASER ----
+    if (tool === 'eraser') {
+      erasing = true;
+      const hit = hitTest(strokes, w.x, w.y);
+      if (hit >= 0) {
+        const newStrokes = strokes.filter((_, i) => i !== hit);
+        const layers = [...st.layers];
+        layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+        setState({ layers, selectedIdxs: [] });
+        needsRender = true;
+      }
+      return;
+    }
+
+    // ---- LASER ----
+    if (tool === 'laser') {
+      drawing = true;
+      laserTrails.push({ time: Date.now(), points: [{ x: w.x, y: w.y }] });
+      needsRender = true;
+      return;
+    }
+
+    // ---- CONNECTOR ----
+    if (tool === 'connector') {
+      let bestDist = CONNECTOR_SNAP_DIST, bestAnchor = null;
+      for (let i = 0; i < strokes.length; i++) {
+        if (!strokes[i] || isLineLike(strokes[i].type)) continue;
         for (const a of getConnectorAnchors(strokes[i])) {
-          const d = Math.hypot(x - a.x, y - a.y);
-          if (d < bestDist) { bestDist = d; bestAnchor = a; bestIdx = i; }
+          const d = Math.hypot(w.x - a.x, w.y - a.y);
+          if (d < bestDist) { bestDist = d; bestAnchor = { ...a, strokeIdx: i }; }
         }
       }
       if (bestAnchor) {
-        connectorStart = { strokeIdx: bestIdx, anchor: bestAnchor };
-        currentStroke = { type: 'connector', x1: bestAnchor.x, y1: bestAnchor.y, x2: x, y2: y, color: '#6366f1', width: 2, opacity: 1 };
+        connectorStart = bestAnchor;
+        currentStroke = {
+          type: 'connector', x1: bestAnchor.x, y1: bestAnchor.y,
+          x2: bestAnchor.x, y2: bestAnchor.y,
+          color: st.color, width: st.lineWidth, opacity: st.opacity,
+          fromStroke: bestAnchor.strokeIdx, fromAnchor: bestAnchor.id
+        };
         drawing = true;
       }
       needsRender = true;
       return;
     }
 
-    /* ── Text tool ── */
-    if (st.tool === 'text') {
-      e.preventDefault();
-      const v = st.view;
-      // Position the inline editor exactly where the text will render
-      setTextEdit({
-        sx: sx, sy: sy,
-        wx: x, wy: y,
-        fontSize: st.fontSize || 20,
-        color: st.color,
-      });
-      return;
-    }
-
-    /* ── Laser ── */
-    if (st.tool === 'laser') {
-      drawing = true;
-      laserTrails.push({ x, y, time: Date.now() });
-      e.preventDefault(); return;
-    }
-
-    /* ── Eraser (object eraser) ── */
-    if (st.tool === 'eraser') {
-      e.preventDefault();
-      erasing = true;
-      erasedIndices = new Set();
-      pushUndo();
-      eraseAt(x, y);
-      return;
-    }
-
-    /* ── Drawing tools ── */
-    e.preventDefault();
+    // ---- DRAWING TOOLS ----
     drawing = true;
-    pushUndo();
-    const base = { color: st.color, width: st.lineWidth, opacity: st.opacity, filled: st.filled };
+    const wsx = snapVal(w.x), wsy = snapVal(w.y);
+    const base = { color: st.color, width: st.lineWidth, opacity: st.opacity };
 
-    switch (st.tool) {
+    switch (tool) {
       case 'pen':
-        currentStroke = { type: 'pen', points: [{ x, y }], ...base }; break;
-      case 'line':   currentStroke = { type: 'line',   x1: x, y1: y, x2: x, y2: y, ...base }; break;
-      case 'arrow':  currentStroke = { type: 'arrow',  x1: x, y1: y, x2: x, y2: y, ...base }; break;
-      case 'rect':   currentStroke = { type: 'rect',   x1: x, y1: y, x2: x, y2: y, ...base }; break;
-      case 'circle': currentStroke = { type: 'circle', x1: x, y1: y, x2: x, y2: y, ...base }; break;
+        currentStroke = { type: 'pen', points: [{ x: wsx, y: wsy }], ...base }; break;
+      case 'line':
+        currentStroke = { type: 'line', x1: wsx, y1: wsy, x2: wsx, y2: wsy, ...base }; break;
+      case 'arrow':
+        currentStroke = { type: 'arrow', x1: wsx, y1: wsy, x2: wsx, y2: wsy, ...base }; break;
+      case 'rect':
+        currentStroke = { type: 'rect', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'circle':
+        currentStroke = { type: 'circle', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'triangle':
+        currentStroke = { type: 'triangle', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'diamond':
+        currentStroke = { type: 'diamond', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'star':
+        currentStroke = { type: 'star', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'hexagon':
+        currentStroke = { type: 'hexagon', x1: wsx, y1: wsy, x2: wsx, y2: wsy, filled: st.filled, ...base }; break;
+      case 'frame':
+        currentStroke = { type: 'frame', x1: wsx, y1: wsy, x2: wsx, y2: wsy, label: 'Frame', color: st.color, width: 2, opacity: st.opacity }; break;
+      case 'text':
+        setState({ selectedIdxs: [] });
+        drawing = false;
+        break;
     }
     needsRender = true;
   }
 
-  /* ═══════════════ POINTER MOVE ═══════════════ */
+  // ================= POINTER MOVE =================
   function onMove(e) {
-    const { sx, sy } = ptrPos(e);
-    const { x, y } = screenToWorld(sx, sy);
+    const rect = canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) * dpr;
+    const sy = (e.clientY - rect.top) * dpr;
+    const w = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const st = getState();
+    const strokes = getStrokes();
 
-    if (collab.isConnected()) collab.send({ type: 'cursor', x: sx, y: sy });
+    if (st.collabConnected) sendCursor(w.x, w.y);
 
-    // Panning
+    // Pan
     if (panning) {
-      setState({ view: { ...getState().view, x: panVX + (sx - panSX), y: panVY + (sy - panSY) } });
-      needsRender = true; return;
-    }
-
-    /* ── Rotating ── */
-    if (rotating && getState().tool === 'select') {
-      e.preventDefault();
-      const st = getState();
-      const idx = st.selectedStrokeIdx;
-      if (idx != null && dragOrigStroke) {
-        const { cx, cy } = getCenter(dragOrigStroke);
-        const currentAngle = Math.atan2(y - cy, x - cx);
-        const delta = currentAngle - rotateStartAngle;
-        const updated = { ...dragOrigStroke, rotation: rotateOrigRotation + delta };
-        updateLayer(idx, updated);
-        needsRender = true;
-      }
-      return;
-    }
-
-    /* ── Eraser dragging ── */
-    if (erasing && getState().tool === 'eraser') {
-      e.preventDefault();
-      eraseAt(x, y);
-      return;
-    }
-
-    /* ── Endpoint dragging (line/arrow/connector) ── */
-    if (endpointDragging && getState().tool === 'select') {
-      e.preventDefault();
-      const st = getState();
-      const idx = st.selectedStrokeIdx;
-      if (idx != null && dragOrigStroke) {
-        // If stroke is rotated, un-rotate mouse pos to model space
-        let epX = x, epY = y;
-        if (dragOrigStroke.rotation) {
-          const { cx, cy } = getCenter(dragOrigStroke);
-          const p = rotatePoint(x, y, cx, cy, -dragOrigStroke.rotation);
-          epX = p.x; epY = p.y;
-        }
-        const moved = moveEndpoint(dragOrigStroke, endpointDragging, epX, epY);
-        moved.rotation = dragOrigStroke.rotation;
-        updateLayer(idx, moved);
-        dragOrigStroke = JSON.parse(JSON.stringify(moved));
-        needsRender = true;
-      }
-      return;
-    }
-
-    /* ── Resizing (corner handles) ── */
-    if (resizingHandle && getState().tool === 'select') {
-      e.preventDefault();
-      const dx = x - dragStartWX, dy = y - dragStartWY;
-      const st = getState();
-      const idx = st.selectedStrokeIdx;
-      if (idx != null && dragOrigStroke && resizeOrigBB) {
-        const resized = resizeStroke(dragOrigStroke, resizingHandle, dx, dy, resizeOrigBB);
-        updateLayer(idx, resized);
-        needsRender = true;
-      }
-      return;
-    }
-
-    /* ── Dragging (whole stroke move) ── */
-    if (dragging && getState().tool === 'select') {
-      e.preventDefault();
-      const dx = x - dragStartWX, dy = y - dragStartWY;
-      const st = getState();
-      const idx = st.selectedStrokeIdx;
-      if (idx != null && dragOrigStroke) {
-        const moved = moveStroke(dragOrigStroke, dx, dy);
-        moved.rotation = dragOrigStroke.rotation;
-        updateLayer(idx, moved);
-        needsRender = true;
-      }
-      return;
-    }
-
-    /* ── Connector dragging ── */
-    if (drawing && getState().tool === 'connector' && currentStroke) {
-      e.preventDefault();
-      currentStroke.x2 = x; currentStroke.y2 = y;
+      const dx = (e.clientX - panStartX) / st.view.scale;
+      const dy = (e.clientY - panStartY) / st.view.scale;
+      setState({ view: { ...st.view, x: panViewX + dx, y: panViewY + dy } });
       needsRender = true;
       return;
     }
 
-    /* ── Hover cursors ── */
-    if (!drawing) {
-      if (getState().tool === 'select' && !panning) {
-        const st = getState();
-        const strokes = st.layers[st.activeLayer]?.strokes || [];
-        // Check handles on selected stroke
-        if (st.selectedStrokeIdx != null && strokes[st.selectedStrokeIdx]) {
-          const handle = hitHandle(strokes[st.selectedStrokeIdx], x, y, st.view.scale);
-          const cur = handleCursor(handle);
-          if (cur) { cvs.style.cursor = cur; return; }
-        }
-        // Check if hovering a stroke
-        let hover = false;
-        for (let i = strokes.length - 1; i >= 0; i--) {
-          if (hitTest(strokes[i], x, y)) { hover = true; break; }
-        }
-        cvs.style.cursor = hover ? 'move' : 'default';
+    // Rotate
+    if (rotating && st.selectedIdxs.length === 1) {
+      const idx = st.selectedIdxs[0];
+      const bb = getBBox(rotateOrigStroke);
+      if (bb) {
+        const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2;
+        const angle = Math.atan2(w.y - cy, w.x - cx) -
+          Math.atan2(bb.y - ROTATE_HANDLE_DIST - cy, bb.x + bb.w / 2 - cx);
+        const newStroke = { ...rotateOrigStroke, rotation: rotateOrigAngle + angle };
+        const newStrokes = [...strokes];
+        newStrokes[idx] = newStroke;
+        const layers = [...st.layers];
+        layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+        setState({ layers });
       }
+      needsRender = true;
       return;
     }
 
-    e.preventDefault();
+    // Endpoint drag
+    if (endpointDragging && st.selectedIdxs.length === 1) {
+      const idx = st.selectedIdxs[0];
+      const snapped = { x: snapVal(w.x), y: snapVal(w.y) };
+      const moved = moveEndpoint(endpointOrigStroke, endpointDragging, snapped.x, snapped.y);
 
-    /* ── Laser ── */
-    if (getState().tool === 'laser') {
-      laserTrails.push({ x, y, time: Date.now() });
-      needsRender = true; return;
-    }
-
-    /* ── Drawing in progress ── */
-    if (!currentStroke) return;
-    switch (currentStroke.type) {
-      case 'pen': currentStroke.points.push({ x, y }); break;
-      default: currentStroke.x2 = x; currentStroke.y2 = y;
-    }
-    needsRender = true;
-  }
-
-  /* ═══════════════ POINTER UP ═══════════════ */
-  function onUp() {
-    if (erasing) {
-      erasing = false; erasedIndices = new Set();
-      setCursor(); scheduleAutosave(); needsRender = true; return;
-    }
-    if (panning) { panning = false; setCursor(); return; }
-
-    if (rotating) {
-      rotating = false; dragOrigStroke = null;
-      setCursor(); scheduleAutosave(); needsRender = true; return;
-    }
-    if (endpointDragging) {
-      endpointDragging = null; dragOrigStroke = null;
-      setCursor(); scheduleAutosave(); needsRender = true; return;
-    }
-    if (resizingHandle) {
-      resizingHandle = null; resizeOrigBB = null; dragOrigStroke = null;
-      setCursor(); scheduleAutosave(); needsRender = true; return;
-    }
-    if (dragging) {
-      dragging = false; dragOrigStroke = null;
-      setCursor(); scheduleAutosave(); needsRender = true; return;
-    }
-
-    /* ── Connector finish ── */
-    if (getState().tool === 'connector' && connectorStart && currentStroke) {
-      const st = getState();
-      const strokes = st.layers[st.activeLayer]?.strokes || [];
-      let bestDist = CONNECTOR_SNAP_DIST / st.view.scale, bestAnchor = null;
-      for (let i = strokes.length - 1; i >= 0; i--) {
-        if (i === connectorStart.strokeIdx || strokes[i].type === 'connector') continue;
+      // Snap to connector anchors
+      let bestDist = CONNECTOR_SNAP_DIST, bestAnchor = null;
+      for (let i = 0; i < strokes.length; i++) {
+        if (i === idx || !strokes[i] || isLineLike(strokes[i].type)) continue;
         for (const a of getConnectorAnchors(strokes[i])) {
-          const d = Math.hypot(currentStroke.x2 - a.x, currentStroke.y2 - a.y);
+          const d = Math.hypot(snapped.x - a.x, snapped.y - a.y);
           if (d < bestDist) { bestDist = d; bestAnchor = a; }
         }
       }
       if (bestAnchor) {
-        pushUndo();
-        const conn = { ...currentStroke, x2: bestAnchor.x, y2: bestAnchor.y };
-        const st2 = getState();
-        const layers = st2.layers.map((l, i) =>
-          i === st2.activeLayer ? { ...l, strokes: [...l.strokes, conn] } : l
-        );
-        setState({ layers });
-        scheduleAutosave();
-        showToast('🔗 Verbunden');
+        if (endpointDragging === 'p1') { moved.x1 = bestAnchor.x; moved.y1 = bestAnchor.y; }
+        else { moved.x2 = bestAnchor.x; moved.y2 = bestAnchor.y; }
       }
-      connectorStart = null; currentStroke = null; drawing = false; needsRender = true;
+
+      const newStrokes = [...strokes];
+      newStrokes[idx] = moved;
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      needsRender = true;
       return;
     }
 
-    if (getState().tool === 'laser') { drawing = false; return; }
-    if (!drawing || !currentStroke) { drawing = false; return; }
-    drawing = false;
-
-    const st = getState();
-    const layers = st.layers.map((l, i) =>
-      i === st.activeLayer ? { ...l, strokes: [...l.strokes, currentStroke] } : l
-    );
-    setState({ layers });
-
-    if (collab.isConnected()) collab.send({ type: 'stroke', data: currentStroke });
-    currentStroke = null;
-    needsRender = true;
-    scheduleAutosave();
-  }
-
-  /* ═══════════════ WHEEL ZOOM ═══════════════ */
-  function onWheel(e) {
-    e.preventDefault();
-    const { sx, sy } = ptrPos(e);
-    const delta = e.deltaY > 0 ? 0.92 : 1.08;
-    const v = getState().view;
-    const newScale = Math.min(5, Math.max(0.1, v.scale * delta));
-    setState({
-      view: {
-        x: sx - (sx - v.x) * (newScale / v.scale),
-        y: sy - (sy - v.y) * (newScale / v.scale),
-        scale: newScale,
-      },
-    });
-    needsRender = true;
-  }
-
-  /* ═══════════════ TOUCH ═══════════════ */
-  function onTouchStart(e) {
-    if (e.touches.length === 2) {
-      pinchActive = true;
-      pinchD0 = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      pinchS0 = getState().view.scale;
+    // Resize
+    if (resizingHandle && st.selectedIdxs.length === 1) {
+      const idx = st.selectedIdxs[0];
+      const dx = w.x - dragStartWX;
+      const dy = w.y - dragStartWY;
+      const resized = resizeStroke(resizeOrigStroke, resizingHandle, dx, dy, resizeOrigBB);
+      const newStrokes = [...strokes];
+      newStrokes[idx] = resized;
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      needsRender = true;
       return;
     }
-    onDown(e);
-  }
 
-  function onTouchMove(e) {
-    if (e.touches.length === 2 && pinchActive) {
-      e.preventDefault();
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      setState(s => ({
-        view: { ...s.view, scale: Math.min(5, Math.max(0.1, pinchS0 * (d / pinchD0))) },
-      }));
-      needsRender = true; return;
+    // Multi-drag
+    if (dragging && st.selectedIdxs.length > 0) {
+      let dx = w.x - dragStartWX;
+      let dy = w.y - dragStartWY;
+
+      if (st.gridSnap) {
+        dx = snapToGrid(dx, true);
+        dy = snapToGrid(dy, true);
+      }
+
+      // Alignment guides
+      if (!st.gridSnap) {
+        const movingBBs = [];
+        const movingSet = new Set(st.selectedIdxs);
+        for (const idx of st.selectedIdxs) {
+          const orig = dragOrigStrokes.get(idx);
+          if (orig) {
+            const moved = moveStroke(orig, dx, dy);
+            const bb = getBBox(moved);
+            if (bb) movingBBs.push(bb);
+          }
+        }
+        const result = computeAlignGuides(movingBBs, strokes, movingSet, SNAP_THRESHOLD);
+        alignGuides = result.guides;
+        dx += result.snapDx;
+        dy += result.snapDy;
+      } else {
+        alignGuides = [];
+      }
+
+      const newStrokes = [...strokes];
+      for (const idx of st.selectedIdxs) {
+        const orig = dragOrigStrokes.get(idx);
+        if (orig) newStrokes[idx] = moveStroke(orig, dx, dy);
+      }
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      needsRender = true;
+      return;
     }
-    onMove(e);
-  }
 
-  function onTouchEnd() { pinchActive = false; onUp(); }
-
-  /* ═══════════════ DRAG & DROP IMAGES ═══════════════ */
-  function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
-
-  function onDrop(e) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const { sx, sy } = ptrPos(e);
-        const { x, y } = screenToWorld(sx, sy);
-        const scale = img.width > 400 ? 400 / img.width : 1;
-        pushUndo();
-        const st = getState();
-        const layers = st.layers.map((l, i) =>
-          i === st.activeLayer
-            ? {
-                ...l,
-                strokes: [...l.strokes, {
-                  type: 'image', x, y,
-                  w: img.width * scale, h: img.height * scale,
-                  data: ev.target.result, opacity: 1,
-                }],
-              }
-            : l
-        );
-        setState({ layers });
-        scheduleAutosave();
-        showToast('🖼 Bild eingefügt');
+    // Rubber band
+    if (rubberBand) {
+      rubberBand = {
+        ...rubberBand,
+        x: Math.min(rubberBand.sx, w.x),
+        y: Math.min(rubberBand.sy, w.y),
+        w: Math.abs(w.x - rubberBand.sx),
+        h: Math.abs(w.y - rubberBand.sy),
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  }
-
-  /* ═══════════════ KEYBOARD ═══════════════ */
-  function onKeyDown(e) {
-    if (e.code === 'Space' && !spaceDown &&
-        !['TEXTAREA', 'INPUT'].includes(e.target.tagName) &&
-        !e.target.isContentEditable) {
-      spaceDown = true; setCursor(); e.preventDefault();
+      needsRender = true;
+      return;
     }
 
-    if ((e.key === 'Delete' || e.key === 'Backspace') &&
-        getState().tool === 'select' &&
-        !['TEXTAREA', 'INPUT'].includes(e.target.tagName) &&
-        !e.target.isContentEditable) {
-      const st = getState();
-      if (st.selectedStrokeIdx != null) {
-        e.preventDefault(); pushUndo();
-        const layers = st.layers.map((l, li) => {
-          if (li !== st.activeLayer) return l;
-          return { ...l, strokes: l.strokes.filter((_, si) => si !== st.selectedStrokeIdx) };
-        });
-        setState({ layers, selectedStrokeIdx: null });
-        scheduleAutosave();
+    // Drawing tools
+    if (drawing) {
+      if (st.tool === 'laser') {
+        if (laserTrails.length > 0) laserTrails[laserTrails.length - 1].points.push({ x: w.x, y: w.y });
+        needsRender = true;
+        return;
+      }
+      if (st.tool === 'pen' && currentStroke) {
+        currentStroke.points.push({ x: w.x, y: w.y });
+        needsRender = true;
+        return;
+      }
+      if (currentStroke && currentStroke.x2 !== undefined) {
+        currentStroke.x2 = snapVal(w.x);
+        currentStroke.y2 = snapVal(w.y);
+
+        // Connector anchor snapping
+        if (currentStroke.type === 'connector') {
+          let bestDist = CONNECTOR_SNAP_DIST, bestAnchor = null;
+          for (let i = 0; i < strokes.length; i++) {
+            if (!strokes[i] || isLineLike(strokes[i].type)) continue;
+            for (const a of getConnectorAnchors(strokes[i])) {
+              const d = Math.hypot(w.x - a.x, w.y - a.y);
+              if (d < bestDist) { bestDist = d; bestAnchor = { ...a, strokeIdx: i }; }
+            }
+          }
+          if (bestAnchor) {
+            currentStroke.x2 = bestAnchor.x;
+            currentStroke.y2 = bestAnchor.y;
+            currentStroke.toStroke = bestAnchor.strokeIdx;
+            currentStroke.toAnchor = bestAnchor.id;
+          } else {
+            delete currentStroke.toStroke;
+            delete currentStroke.toAnchor;
+          }
+        }
+        needsRender = true;
+        return;
+      }
+    }
+
+    // Erasing
+    if (erasing) {
+      const hit = hitTest(strokes, w.x, w.y);
+      if (hit >= 0) {
+        const newStrokes = strokes.filter((_, i) => i !== hit);
+        const layers = [...st.layers];
+        layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+        setState({ layers, selectedIdxs: [] });
+        needsRender = true;
+      }
+      return;
+    }
+
+    // Hover cursor
+    if (st.tool === 'select' && !drawing) {
+      if (st.selectedIdxs.length === 1) {
+        const h = hitHandle(strokes, st.selectedIdxs[0], sx, sy, st.view);
+        if (h) { canvas.style.cursor = handleCursor(h); return; }
+      }
+      const hit = hitTest(strokes, w.x, w.y);
+      canvas.style.cursor = hit >= 0 ? 'move' : 'default';
+    } else if (st.tool === 'hand' || spaceDown) {
+      canvas.style.cursor = 'grab';
+    } else if (st.tool === 'eraser') {
+      canvas.style.cursor = 'crosshair';
+    } else if (st.tool === 'text') {
+      canvas.style.cursor = 'text';
+    }
+  }
+
+  // ================= POINTER UP =================
+  function onUp(e) {
+    const st = getState();
+
+    if (panning) {
+      panning = false;
+      canvas.style.cursor = st.tool === 'hand' ? 'grab' : 'default';
+      return;
+    }
+
+    if (rotating) {
+      rotating = false;
+      rotateOrigStroke = null;
+      autosave(); needsRender = true;
+      return;
+    }
+
+    if (endpointDragging) {
+      endpointDragging = null;
+      endpointOrigStroke = null;
+      autosave(); needsRender = true;
+      return;
+    }
+
+    if (resizingHandle) {
+      resizingHandle = null;
+      resizeOrigBB = null;
+      resizeOrigStroke = null;
+      autosave(); needsRender = true;
+      return;
+    }
+
+    if (dragging) {
+      dragging = false;
+      dragOrigStrokes.clear();
+      alignGuides = [];
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // End rubber band
+    if (rubberBand) {
+      if (rubberBand.w > 3 || rubberBand.h > 3) {
+        const strokes = getStrokes();
+        const selected = [];
+        for (let i = 0; i < strokes.length; i++) {
+          const bb = getBBox(strokes[i]);
+          if (!bb) continue;
+          if (bb.x + bb.w >= rubberBand.x && bb.x <= rubberBand.x + rubberBand.w &&
+              bb.y + bb.h >= rubberBand.y && bb.y <= rubberBand.y + rubberBand.h) {
+            selected.push(i);
+          }
+        }
+        setState({ selectedIdxs: expandGroup(selected, strokes) });
+      }
+      rubberBand = null;
+      needsRender = true;
+      return;
+    }
+
+    if (erasing) {
+      erasing = false;
+      autosave();
+      return;
+    }
+
+    // End drawing
+    if (drawing) {
+      drawing = false;
+      if (st.tool === 'laser') { needsRender = true; return; }
+      if (currentStroke) {
+        if (currentStroke.type === 'pen' && (!currentStroke.points || currentStroke.points.length < 2)) {
+          currentStroke = null; return;
+        }
+        const strokes = getStrokes();
+        const layers = [...st.layers];
+        layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: [...strokes, currentStroke] };
+        setState({ layers });
+        if (st.collabConnected) sendStroke(currentStroke);
+        currentStroke = null;
+        autosave();
         needsRender = true;
       }
     }
   }
 
-  function onKeyUp(e) {
-    if (e.code === 'Space') { spaceDown = false; setCursor(); }
+  // ================= DOUBLE CLICK =================
+  function onDblClick(e) {
+    const rect = canvas.getBoundingClientRect();
+    const w = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const st = getState();
+    const strokes = getStrokes();
+
+    if (st.tool === 'select') {
+      const found = hitTest(strokes, w.x, w.y);
+      if (found >= 0) {
+        const s = strokes[found];
+        setState({ selectedIdxs: [found] });
+        if (s.type === 'text' && setTextEdit) {
+          // Open WYSIWYG editor for text
+          const v = st.view;
+          const sx = (s.x + v.x) * v.scale + rect.left;
+          const sy = (s.y - (s.fontSize || 16) + v.y) * v.scale + rect.top;
+          setTextEdit({ editIdx: found, wx: s.x, wy: s.y, sx, sy,
+            fontSize: s.fontSize || 16, color: s.color, bold: s.bold, italic: s.italic,
+            initialText: s.text || '' });
+          return;
+        }
+        // For shapes: edit label
+        if (['rect','circle','triangle','diamond','star','hexagon','frame'].includes(s.type) && setTextEdit) {
+          const bb = getBBox(s);
+          if (bb) {
+            const v = st.view;
+            const cx = (bb.x + bb.w / 2 + v.x) * v.scale + rect.left;
+            const cy = (bb.y + bb.h / 2 + v.y) * v.scale + rect.top;
+            setTextEdit({ editIdx: found, wx: bb.x + bb.w / 2, wy: bb.y + bb.h / 2,
+              sx: cx - 50, sy: cy - 12, fontSize: s.fontSize || 14,
+              color: s.color, isLabel: true, initialText: s.label || '' });
+          }
+        }
+      } else if (st.tool === 'select' || st.tool === 'text') {
+        // Click empty space with text tool: new text
+        if (setTextEdit) {
+          const v = st.view;
+          const sx = (w.x + v.x) * v.scale + rect.left;
+          const sy = (w.y + v.y) * v.scale + rect.top;
+          setTextEdit({ wx: w.x, wy: w.y, sx, sy,
+            fontSize: st.fontSize || 20, color: st.color, initialText: '' });
+        }
+      }
+    } else if (st.tool === 'text') {
+      // Text tool: new text at click position
+      if (setTextEdit) {
+        const v = st.view;
+        const sx = (w.x + v.x) * v.scale + rect.left;
+        const sy = (w.y + v.y) * v.scale + rect.top;
+        setTextEdit({ wx: w.x, wy: w.y, sx, sy,
+          fontSize: st.fontSize || 20, color: st.color, initialText: '' });
+      }
+    }
   }
 
-  /* ═══════════════ DOUBLE-CLICK (edit text) ═══════════════ */
-  function onDblClick(e) {
-    if (getState().tool !== 'select') return;
-    const { sx, sy } = ptrPos(e);
-    const { x, y } = screenToWorld(sx, sy);
+  // ================= WHEEL =================
+  function onWheel(e) {
+    e.preventDefault();
     const st = getState();
-    const strokes = st.layers[st.activeLayer]?.strokes || [];
-    for (let i = strokes.length - 1; i >= 0; i--) {
-      if (strokes[i].type === 'text' && hitTest(strokes[i], x, y)) {
-        const s = strokes[i];
-        // Position at exactly where the text renders (s.x, s.y is the baseline origin)
-        const editSX = s.x * st.view.scale + st.view.x;
-        const editSY = (s.y - (s.fontSize || 16)) * st.view.scale + st.view.y;
-        setTextEdit({
-          sx: editSX, sy: editSY, wx: s.x, wy: s.y,
-          editIdx: i, initialText: s.text,
-          fontSize: s.fontSize || 16,
-          color: s.color,
-          bold: s.bold,
-          italic: s.italic,
-        });
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const newScale = Math.min(10, Math.max(0.05, st.view.scale * factor));
+    const wx = mx / st.view.scale - st.view.x;
+    const wy = my / st.view.scale - st.view.y;
+    setState({ view: { x: mx / newScale - wx, y: my / newScale - wy, scale: newScale } });
+    needsRender = true;
+  }
+
+  // ================= KEYBOARD =================
+  function onKeyDown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    const st = getState();
+    const strokes = getStrokes();
+    const meta = e.metaKey || e.ctrlKey;
+
+    // Space pan
+    if (e.code === 'Space' && !spaceDown) {
+      spaceDown = true;
+      canvas.style.cursor = 'grab';
+      e.preventDefault();
+      return;
+    }
+
+    // Delete
+    if ((e.key === 'Delete' || e.key === 'Backspace') && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const toDelete = new Set(st.selectedIdxs);
+      const newStrokes = strokes.filter((_, i) => !toDelete.has(i));
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers, selectedIdxs: [] });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Ctrl+A select all
+    if (meta && e.key === 'a') {
+      e.preventDefault();
+      setState({ selectedIdxs: strokes.map((_, i) => i) });
+      needsRender = true;
+      return;
+    }
+
+    // Ctrl+C copy
+    if (meta && e.key === 'c' && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const copied = st.selectedIdxs.map(i => JSON.parse(JSON.stringify(strokes[i]))).filter(Boolean);
+      setState({ clipboard: copied });
+      return;
+    }
+
+    // Ctrl+X cut
+    if (meta && e.key === 'x' && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const copied = st.selectedIdxs.map(i => JSON.parse(JSON.stringify(strokes[i]))).filter(Boolean);
+      const toDelete = new Set(st.selectedIdxs);
+      const newStrokes = strokes.filter((_, i) => !toDelete.has(i));
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ clipboard: copied, layers, selectedIdxs: [] });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Ctrl+V paste
+    if (meta && e.key === 'v') {
+      e.preventDefault();
+      // Try clipboard image first
+      if (navigator.clipboard && navigator.clipboard.read) {
+        navigator.clipboard.read().then(items => {
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith('image/')) {
+                item.getType(type).then(blob => pasteImageBlob(blob));
+                return;
+              }
+            }
+          }
+          pasteFromInternal();
+        }).catch(() => pasteFromInternal());
+      } else {
+        pasteFromInternal();
+      }
+      return;
+    }
+
+    // Ctrl+D duplicate
+    if (meta && e.key === 'd' && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const duped = st.selectedIdxs.map(i => {
+        const s = JSON.parse(JSON.stringify(strokes[i]));
+        return moveStroke(s, 20, 20);
+      }).filter(Boolean);
+      const newStrokes = [...strokes, ...duped];
+      const newIdxs = duped.map((_, i) => strokes.length + i);
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers, selectedIdxs: newIdxs });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Ctrl+G group
+    if (meta && e.key === 'g' && !e.shiftKey && st.selectedIdxs.length > 1) {
+      e.preventDefault();
+      const gid = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const newStrokes = [...strokes];
+      for (const idx of st.selectedIdxs) {
+        if (newStrokes[idx]) newStrokes[idx] = { ...newStrokes[idx], groupId: gid };
+      }
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Ctrl+Shift+G ungroup
+    if (meta && e.key === 'G' && e.shiftKey && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const newStrokes = [...strokes];
+      for (const idx of st.selectedIdxs) {
+        if (newStrokes[idx]) {
+          const s = { ...newStrokes[idx] };
+          delete s.groupId;
+          newStrokes[idx] = s;
+        }
+      }
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Z-order: Ctrl+] bring forward, Ctrl+[ send backward
+    // Ctrl+Shift+] bring to front, Ctrl+Shift+[ send to back
+    if (meta && (e.key === ']' || e.key === '[') && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const sel = new Set(st.selectedIdxs);
+      const selected = st.selectedIdxs.map(i => strokes[i]).filter(Boolean);
+      const rest = strokes.filter((_, i) => !sel.has(i));
+      let result;
+
+      if (e.key === ']' && e.shiftKey) {
+        result = [...rest, ...selected]; // front
+      } else if (e.key === '[' && e.shiftKey) {
+        result = [...selected, ...rest]; // back
+      } else if (e.key === ']') {
+        result = [...strokes];
+        const sorted = [...st.selectedIdxs].sort((a, b) => b - a);
+        for (const idx of sorted) {
+          if (idx < result.length - 1 && !sel.has(idx + 1)) {
+            [result[idx], result[idx + 1]] = [result[idx + 1], result[idx]];
+          }
+        }
+      } else {
+        result = [...strokes];
+        const sorted = [...st.selectedIdxs].sort((a, b) => a - b);
+        for (const idx of sorted) {
+          if (idx > 0 && !sel.has(idx - 1)) {
+            [result[idx], result[idx - 1]] = [result[idx - 1], result[idx]];
+          }
+        }
+      }
+
+      const newIdxs = [];
+      for (let i = 0; i < result.length; i++) {
+        if (selected.includes(result[i])) newIdxs.push(i);
+      }
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: result };
+      setState({ layers, selectedIdxs: newIdxs });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Arrow keys nudge
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && st.selectedIdxs.length > 0) {
+      e.preventDefault();
+      const step = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+      let dx = 0, dy = 0;
+      if (e.key === 'ArrowUp') dy = -step;
+      if (e.key === 'ArrowDown') dy = step;
+      if (e.key === 'ArrowLeft') dx = -step;
+      if (e.key === 'ArrowRight') dx = step;
+      const newStrokes = [...strokes];
+      for (const idx of st.selectedIdxs) {
+        if (newStrokes[idx]) newStrokes[idx] = moveStroke(newStrokes[idx], dx, dy);
+      }
+      const layers = [...st.layers];
+      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+      setState({ layers });
+      autosave(); needsRender = true;
+      return;
+    }
+
+    // Escape
+    if (e.key === 'Escape') {
+      setState({ selectedIdxs: [], contextMenu: null });
+      needsRender = true;
+      return;
+    }
+  }
+
+  function onKeyUp(e) {
+    if (e.code === 'Space') {
+      spaceDown = false;
+      canvas.style.cursor = getState().tool === 'hand' ? 'grab' : 'default';
+    }
+  }
+
+  // ---- paste helpers ----
+  function pasteFromInternal() {
+    const st = getState();
+    const clip = st.clipboard;
+    if (!clip || !clip.length) return;
+    const strokes = getStrokes();
+    const pasted = clip.map(s => moveStroke(JSON.parse(JSON.stringify(s)), 20, 20));
+    const newStrokes = [...strokes, ...pasted];
+    const newIdxs = pasted.map((_, i) => strokes.length + i);
+    const layers = [...st.layers];
+    layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
+    setState({ layers, selectedIdxs: newIdxs, clipboard: pasted });
+    autosave(); needsRender = true;
+  }
+
+  function pasteImageBlob(blob) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const v = getState().view;
+        const cx = W / 2 / dpr / v.scale - v.x;
+        const cy = H / 2 / dpr / v.scale - v.y;
+        const st2 = getState();
+        const strokes2 = st2.layers[st2.activeLayer]?.strokes || [];
+        const newStroke = {
+          type: 'image',
+          x: cx - img.width / 2, y: cy - img.height / 2,
+          w: img.width, h: img.height,
+          src: reader.result, _img: img
+        };
+        const layers = [...st2.layers];
+        layers[st2.activeLayer] = { ...layers[st2.activeLayer], strokes: [...strokes2, newStroke] };
+        setState({ layers, selectedIdxs: [strokes2.length] });
+        autosave(); needsRender = true;
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  // ---- clipboard paste event (for drag/drop paste) ----
+  function onPaste(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
         e.preventDefault();
+        pasteImageBlob(item.getAsFile());
         return;
       }
     }
   }
 
-  /* ═══════════════ SETUP ═══════════════ */
-  const unsub = subscribe(() => { needsRender = true; setCursor(); });
-
-  window.addEventListener('resize', resize);
-  cvs.addEventListener('mousedown', onDown);
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
-  cvs.addEventListener('wheel', onWheel, { passive: false });
-  cvs.addEventListener('touchstart', onTouchStart, { passive: false });
-  cvs.addEventListener('touchmove', onTouchMove, { passive: false });
-  cvs.addEventListener('touchend', onTouchEnd);
-  cvs.addEventListener('dragover', onDragOver);
-  cvs.addEventListener('drop', onDrop);
-  cvs.addEventListener('dblclick', onDblClick);
-  cvs.addEventListener('contextmenu', e => e.preventDefault());
-  document.addEventListener('keydown', onKeyDown);
-  document.addEventListener('keyup', onKeyUp);
-
-  resize();
-
-  let raf;
-  function loop() {
-    if (needsRender || laserTrails.length) { render(); needsRender = false; }
-    raf = requestAnimationFrame(loop);
+  // ---- touch ----
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      pinchActive = true;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist = Math.hypot(dx, dy);
+      pinchStartScale = getState().view.scale;
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      onDown({ clientX: t.clientX, clientY: t.clientY, button: 0, preventDefault() {}, shiftKey: false });
+    }
   }
-  raf = requestAnimationFrame(loop);
 
-  /* ═══════════════ CLEANUP ═══════════════ */
-  return function cleanup() {
-    cancelAnimationFrame(raf);
-    unsub();
+  function onTouchMove(e) {
+    if (pinchActive && e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const newScale = Math.min(10, Math.max(0.05, pinchStartScale * (dist / pinchStartDist)));
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const st = getState();
+      const rect = canvas.getBoundingClientRect();
+      const cx = mx - rect.left, cy = my - rect.top;
+      const wx = cx / st.view.scale - st.view.x;
+      const wy = cy / st.view.scale - st.view.y;
+      setState({ view: { x: cx / newScale - wx, y: cy / newScale - wy, scale: newScale } });
+      needsRender = true;
+      return;
+    }
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      onMove({ clientX: t.clientX, clientY: t.clientY, preventDefault() {} });
+    }
+  }
+
+  function onTouchEnd(e) {
+    if (pinchActive) { pinchActive = false; return; }
+    onUp({ preventDefault() {} });
+  }
+
+  function onContextMenu(e) { e.preventDefault(); }
+
+  // ---- resize ----
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    W = rect.width * dpr;
+    H = rect.height * dpr;
+    canvas.width = W;
+    canvas.height = H;
+    offscreen.width = W;
+    offscreen.height = H;
+    needsRender = true;
+  }
+
+  // ================= INIT =================
+  resize();
+  requestAnimationFrame(render);
+
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointerleave', onUp);
+  canvas.addEventListener('dblclick', onDblClick);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('contextmenu', onContextMenu);
+  canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+  canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+  canvas.addEventListener('touchend', onTouchEnd);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('paste', onPaste);
+  window.addEventListener('resize', resize);
+
+  // Load images from saved state
+  const initState = getState();
+  for (const layer of initState.layers) {
+    for (const s of layer.strokes) {
+      if (s && s.type === 'image' && s.src && !s._img) {
+        const img = new Image();
+        img.onload = () => { needsRender = true; };
+        img.src = s.src;
+        s._img = img;
+      }
+    }
+  }
+
+  return () => {
+    canvas.removeEventListener('pointerdown', onDown);
+    canvas.removeEventListener('pointermove', onMove);
+    canvas.removeEventListener('pointerup', onUp);
+    canvas.removeEventListener('pointerleave', onUp);
+    canvas.removeEventListener('dblclick', onDblClick);
+    canvas.removeEventListener('wheel', onWheel);
+    canvas.removeEventListener('contextmenu', onContextMenu);
+    canvas.removeEventListener('touchstart', onTouchStart);
+    canvas.removeEventListener('touchmove', onTouchMove);
+    canvas.removeEventListener('touchend', onTouchEnd);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('paste', onPaste);
     window.removeEventListener('resize', resize);
-    cvs.removeEventListener('mousedown', onDown);
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
-    cvs.removeEventListener('wheel', onWheel);
-    cvs.removeEventListener('touchstart', onTouchStart);
-    cvs.removeEventListener('touchmove', onTouchMove);
-    cvs.removeEventListener('touchend', onTouchEnd);
-    cvs.removeEventListener('dblclick', onDblClick);
-    cvs.removeEventListener('dragover', onDragOver);
-    cvs.removeEventListener('drop', onDrop);
-    document.removeEventListener('keydown', onKeyDown);
-    document.removeEventListener('keyup', onKeyUp);
   };
 }

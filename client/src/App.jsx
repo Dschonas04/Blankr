@@ -10,6 +10,8 @@ import LayerPanel from './components/LayerPanel';
 import StickyNotes from './components/StickyNotes';
 import Toast from './components/Toast';
 import CollabBar from './components/CollabBar';
+import ContextMenu from './components/ContextMenu';
+import ChatPanel from './components/ChatPanel';
 
 export default function App() {
   const darkMode = useStore(s => s.darkMode);
@@ -48,20 +50,20 @@ export default function App() {
       if (e.code === 'Space') return; // handled by Canvas
 
       switch (e.key.toLowerCase()) {
-        case 'v': setState({ tool: 'select', selectedStrokeIdx: null }); break;
-        case 'p': setState({ tool: 'pen' }); break;
-        case 'l': setState({ tool: 'line' }); break;
-        case 'a': setState({ tool: 'arrow' }); break;
-        case 'r': setState({ tool: 'rect' }); break;
-        case 'o': setState({ tool: 'circle' }); break;
-        case 't': setState({ tool: 'text' }); break;
-        case 'e': setState({ tool: 'eraser' }); break;
+        case 'v': if (!cmd) setState({ tool: 'select', selectedIdxs: [] }); break;
+        case 'p': if (!cmd) setState({ tool: 'pen' }); break;
+        case 'l': if (!cmd) setState({ tool: 'line' }); break;
+        case 'a': if (!cmd) setState({ tool: 'arrow' }); break;
+        case 'r': if (!cmd) setState({ tool: 'rect' }); break;
+        case 'o': if (!cmd) setState({ tool: 'circle' }); break;
+        case 't': if (!cmd) setState({ tool: 'text' }); break;
+        case 'e': if (!cmd) setState({ tool: 'eraser' }); break;
         case 'c': if (!cmd) setState({ tool: 'connector' }); break;
         case 'z': if (!cmd) setState({ tool: 'laser' }); break;
-        case 'h': setState({ tool: 'hand' }); break;
+        case 'h': if (!cmd) setState({ tool: 'hand' }); break;
         case 'f': if (!cmd) setState(s => ({ fullscreen: !s.fullscreen })); break;
         case 'd': if (!cmd) setState(s => ({ darkMode: !s.darkMode })); break;
-        case 'escape': setState({ fullscreen: false }); break;
+        case 'escape': setState({ fullscreen: false, contextMenu: null }); break;
         default: break;
       }
     }
@@ -95,6 +97,8 @@ export default function App() {
       <LayerPanel />
       <CollabBar />
       <Toast />
+      <ContextMenu />
+      <ChatPanel />
     </>
   );
 }

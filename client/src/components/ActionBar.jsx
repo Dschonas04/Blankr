@@ -30,6 +30,8 @@ export default function ActionBar() {
   const layerPanelOpen = useStore(s => s.layerPanelOpen);
   const collabConnected = useStore(s => s.collabConnected);
   const bgPattern = useStore(s => s.bgPattern);
+  const gridSnap = useStore(s => s.gridSnap);
+  const chatOpen = useStore(s => s.chatOpen);
 
   const [bgOpen, setBgOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -75,7 +77,7 @@ export default function ActionBar() {
     if (!hasStrokes) { showToast('Canvas ist bereits leer'); return; }
     if (!window.confirm('⚠️ Wirklich ALLES löschen?\n\nAlle Zeichnungen auf allen Ebenen werden entfernt. Diese Aktion kann mit Strg+Z rückgängig gemacht werden.')) return;
     pushUndo();
-    setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })), selectedStrokeIdx: null }));
+    setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })), selectedIdxs: [] }));
     scheduleAutosave();
     showToast('🗑 Alles gelöscht');
     if (collab.isConnected()) collab.send({ type: 'clear' });
@@ -161,6 +163,45 @@ export default function ActionBar() {
     showToast('📄 Druckdialog geöffnet');
   }
 
+  function exportJSON() {
+    const { layers } = getState();
+    const data = JSON.stringify({ version: 1, layers }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.download = 'blankr.json';
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    showToast('💾 JSON gespeichert');
+  }
+
+  function importJSON() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = () => {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (data.layers && Array.isArray(data.layers)) {
+            pushUndo();
+            setState({ layers: data.layers, selectedIdxs: [] });
+            scheduleAutosave();
+            showToast('📂 JSON importiert');
+          } else {
+            showToast('⚠️ Ungültiges Format');
+          }
+        } catch {
+          showToast('⚠️ JSON konnte nicht gelesen werden');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
+
   const BG_OPTIONS = [
     { id: 'none', label: 'Leer', cls: 'bg-none' },
     { id: 'dots', label: 'Punkte', cls: 'bg-dots' },
@@ -212,6 +253,12 @@ export default function ActionBar() {
           <button className={`a-btn${collabConnected ? ' active' : ''}`} title="Zusammenarbeit" onClick={handleCollab}>
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
           </button>
+          <button className={`a-btn${gridSnap ? ' active' : ''}`} title="Raster-Snap" onClick={() => setState(s => ({ gridSnap: !s.gridSnap }))}>
+            <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3z" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke="currentColor" strokeWidth="0.5" opacity="0.4"/><circle cx="9" cy="9" r="2" fill="currentColor"/></svg>
+          </button>
+          <button className={`a-btn${chatOpen ? ' active' : ''}`} title="Chat" onClick={() => setState(s => ({ chatOpen: !s.chatOpen }))}>
+            <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+          </button>
         </div>
       </div>
 
@@ -249,6 +296,13 @@ export default function ActionBar() {
           </button>
           <button className="popup-action" onClick={exportPDF}>
             <span className="popup-action-icon">📄</span> Drucken / PDF
+          </button>
+          <hr style={{border:'none',borderTop:'1px solid var(--border)',margin:'4px 0'}}/>
+          <button className="popup-action" onClick={() => { setExportOpen(false); exportJSON(); }}>
+            <span className="popup-action-icon">💾</span> Als JSON speichern
+          </button>
+          <button className="popup-action" onClick={() => { setExportOpen(false); importJSON(); }}>
+            <span className="popup-action-icon">📂</span> JSON importieren
           </button>
         </div>
       )}

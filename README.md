@@ -8,20 +8,30 @@ Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt R
 - **Stift** – Freihandzeichnen mit konfigurierbarer Strichstärke
 - **Linie / Pfeil** – Gerade Linien und Pfeile im draw.io-Stil (offene V-Pfeilspitzen)
 - **Rechteck / Kreis** – Geometrische Formen, optional mit Füllung
+- **Dreieck / Raute / Stern / Hexagon** – Weitere Polygon-Formen mit Füllung
 - **Text** – WYSIWYG-Inline-Editor mit formatierter Textbearbeitung (Fett, Kursiv, Schriftgröße)
+- **Text auf Formen** – Doppelklick auf Formen fügt ein zentriertes Label hinzu
+- **Rahmen (Frame)** – Benannte Bereiche auf dem Canvas zur Organisation
 - **Radierer** – Objekt-basierter Radierer (entfernt ganze Strokes per Klick/Ziehen)
 - **Laser-Pointer** – Roter Laser-Cursor mit verblassender Spur
 - **Connector** – Verbindungspfeile zwischen Objekten mit automatischem Anchor-Snapping
 
 ### Auswahl & Bearbeitung
-- **Select-Tool** – Objekte per Klick auswählen
-- **Verschieben** – Ausgewählte Objekte per Drag & Drop bewegen
-- **Größe ändern** – Eck-Handles zum Skalieren von Formen
+- **Multi-Select** – Shift+Klick oder Gummiband-Auswahl für mehrere Objekte
+- **Verschieben** – Alle ausgewählten Objekte gleichzeitig per Drag & Drop bewegen
+- **Größe ändern** – Eck-Handles zum Skalieren (bei Einzelauswahl)
 - **Drehen** – Rotations-Handle für beliebige Drehwinkel
 - **Endpunkte ziehen** – Anfangs-/Endpunkte von Linien, Pfeilen und Connectoren einzeln verschieben
-- **Farbe ändern** – Farbauswahl wirkt auch auf das aktuell ausgewählte Objekt
+- **Farbe ändern** – Farbauswahl wirkt auf alle ausgewählten Objekte
+- **Kopieren / Einfügen / Duplizieren** – `Ctrl+C/V/D` für Zwischenablage-Operationen
+- **Ausschneiden** – `Ctrl+X` zum Ausschneiden
+- **Pfeil-Nudging** – Pfeiltasten verschieben Auswahl um 1px, mit Shift um 10px
 - **Löschen** – Auswahl mit `Delete`/`Backspace` entfernen
-- **Text bearbeiten** – Doppelklick auf Text öffnet den Inline-Editor
+- **Z-Order** – `Ctrl+]`/`[` zum Nach-vorne/hinten-Schieben
+- **Gruppieren / Auflösen** – `Ctrl+G` / `Ctrl+Shift+G`
+- **Rechtsklick-Kontextmenü** – Schnellzugriff auf alle Bearbeitungsaktionen
+- **Alignment Guides** – Automatische Ausrichtungshilfen beim Verschieben
+- **Raster-Snapping** – Optionales Einrasten am Raster
 
 ### Canvas & Navigation
 - **Zoom & Pan** – Mausrad-Zoom, Hand-Tool und Space-Drag
@@ -34,17 +44,20 @@ Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt R
 - **Sticky Notes** – Farbige Haftnotizen direkt auf dem Whiteboard
 - **Undo / Redo** – Unbegrenzte Rückgängig-History (bis zu 50 Schritte)
 
-### Export
+### Import & Export
 - **PNG** – Pixel-Export mit korrektem Hintergrund
 - **JPEG** – Komprimierter Bild-Export
 - **SVG** – Vektorgrafik-Export mit allen Formen und Pfeilen
+- **JSON** – Projekt speichern und laden (vollständiger State-Export/Import)
+- **Bild einfügen** – `Ctrl+V` zum Einfügen von Bildern aus der Zwischenablage
 - **Drucken / PDF** – Über den Browser-Druckdialog
 
 ### Echtzeit-Kollaboration
 - **WebSocket-Sync** – Strokes, Cursor-Positionen und Clear-Events live synchronisiert
 - **Raum-System** – Beitritt über URL-Parameter `?room=<id>`
 - **Nutzerfarben** – Jeder Teilnehmer erhält automatisch eine eigene Farbe
-- **Remote-Cursor** – Cursor anderer Teilnehmer werden in Echtzeit angezeigt
+- **Remote-Cursor mit Namen** – Cursor anderer Teilnehmer werden mit Name in Echtzeit angezeigt
+- **Chat** – Integrierter Chat-Sidebar für Textnachrichten
 
 ### Weitere Features
 - **Dark Mode** – Umschalten zwischen hellem und dunklem Design mit automatischer Farbanpassung (dunkle Strokes werden im Dark Mode invertiert)
@@ -92,9 +105,22 @@ docker compose down
 | `D`                | Dark Mode           |
 | `Space` (halten)   | Pan (temporär)      |
 | `Delete`/`Backspace` | Auswahl löschen   |
+| `Ctrl + C`         | Kopieren            |
+| `Ctrl + X`         | Ausschneiden        |
+| `Ctrl + V`         | Einfügen (auch Bilder) |
+| `Ctrl + D`         | Duplizieren         |
+| `Ctrl + A`         | Alles auswählen     |
+| `Ctrl + G`         | Gruppieren          |
+| `Ctrl + Shift + G` | Gruppierung aufheben |
+| `Ctrl + ]`         | Eine Ebene nach vorne |
+| `Ctrl + [`         | Eine Ebene nach hinten |
+| `Ctrl + Shift + ]` | Ganz nach vorne     |
+| `Ctrl + Shift + [` | Ganz nach hinten    |
 | `Ctrl + Z`         | Rückgängig          |
 | `Ctrl + Shift + Z` | Wiederholen         |
-| `Escape`           | Fullscreen beenden  |
+| `↑ ↓ ← →`         | Auswahl um 1px verschieben |
+| `Shift + ↑ ↓ ← →` | Auswahl um 10px verschieben |
+| `Escape`           | Auswahl aufheben / Fullscreen beenden |
 
 ## Architektur
 
@@ -141,6 +167,8 @@ Blankr/
 │   │       ├── ZoomControls.jsx
 │   │       ├── LayerPanel.jsx
 │   │       ├── CollabBar.jsx
+│   │       ├── ContextMenu.jsx
+│   │       ├── ChatPanel.jsx
 │   │       ├── StickyNotes.jsx
 │   │       └── Toast.jsx
 │   ├── index.html

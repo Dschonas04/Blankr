@@ -38,8 +38,28 @@ const TOOLS = [
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" strokeDasharray="2 3" /></svg>,
   },
   {
+    id: 'triangle', label: 'Dreieck',
+    icon: <svg viewBox="0 0 24 24"><polygon points="12 3 22 21 2 21" /></svg>,
+  },
+  {
+    id: 'diamond', label: 'Raute',
+    icon: <svg viewBox="0 0 24 24"><polygon points="12 2 22 12 12 22 2 12" /></svg>,
+  },
+  {
+    id: 'star', label: 'Stern',
+    icon: <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26" /></svg>,
+  },
+  {
+    id: 'hexagon', label: 'Hexagon',
+    icon: <svg viewBox="0 0 24 24"><polygon points="12 2 21 7 21 17 12 22 3 17 3 7" /></svg>,
+  },
+  {
     id: 'connector', label: 'Verbinden (C)',
     icon: <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="3" /><circle cx="19" cy="19" r="3" /><path d="M8 8l8 8" /></svg>,
+  },
+  {
+    id: 'frame', label: 'Rahmen (F)',
+    icon: <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" strokeDasharray="3 2" /><text x="5" y="9" fontSize="6" fill="currentColor">F</text></svg>,
   },
   {
     id: 'hand', label: 'Bewegen (H)',
