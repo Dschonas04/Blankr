@@ -178,9 +178,9 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   function onDown(e) {
     if (e.preventDefault) e.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    const sx = (e.clientX - rect.left) * dpr;
-    const sy = (e.clientY - rect.top) * dpr;
-    const w = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const w = toWorld(sx, sy);
     const st = getState();
     const strokes = getStrokes();
     const tool = st.tool;
@@ -360,9 +360,9 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   // ================= POINTER MOVE =================
   function onMove(e) {
     const rect = canvas.getBoundingClientRect();
-    const sx = (e.clientX - rect.left) * dpr;
-    const sy = (e.clientY - rect.top) * dpr;
-    const w = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const w = toWorld(sx, sy);
     const st = getState();
     const strokes = getStrokes();
 
