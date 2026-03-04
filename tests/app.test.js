@@ -132,7 +132,7 @@ test("admin has all permissions", () => {
   assert.strictEqual(p.exportImport, true);
 });
 
-test("editor has draw and tools permissions", () => {
+test("editor has all permissions", () => {
   const p = ROLE_PERMISSIONS.editor;
   assert.strictEqual(p.draw, true);
   assert.strictEqual(p.tools, true);
