@@ -58,7 +58,6 @@ export default function App() {
         case 'o': if (!cmd) setState({ tool: 'circle' }); break;
         case 't': if (!cmd) setState({ tool: 'text' }); break;
         case 'e': if (!cmd) setState({ tool: 'eraser' }); break;
-        case 'c': if (!cmd) setState({ tool: 'connector' }); break;
         case 'z': if (!cmd) setState({ tool: 'laser' }); break;
         case 'h': if (!cmd) setState({ tool: 'hand' }); break;
         case 'f': if (!cmd) setState(s => ({ fullscreen: !s.fullscreen })); break;
