@@ -1,273 +1,330 @@
-/* ═══════════════════════════════════════
-   Canvas — Rendering
-   All draw calls, no state mutation.
-   ═══════════════════════════════════════ */
+// Canvas - Rendering
 
 import { BG_SPACING, HANDLE_SIZE, ROTATE_HANDLE_DIST } from './constants.js';
-import { getBBox, getCenter, getConnectorAnchors, isLineLike } from './geometry.js';
+import { getBBox, rotatePoint, isLineLike, isPolygonShape, getShapeVertices } from './geometry.js';
 
-/* ── Background patterns ── */
-export function drawBackground(ctx, cvs, dpr, state) {
-  const { bgPattern, darkMode, view } = state;
-  const w = cvs.width / dpr, h = cvs.height / dpr;
-
-  ctx.fillStyle = darkMode ? '#1e1e32' : '#ffffff';
-  ctx.fillRect(0, 0, w, h);
-  if (bgPattern === 'none') return;
-
+// ---- background ----
+export function drawBackground(ctx, W, H, view, pattern, dark) {
+  ctx.fillStyle = dark ? '#1e1e1e' : '#f5f5f5';
+  ctx.fillRect(0, 0, W, H);
+  if (pattern === 'none') return;
   const sp = BG_SPACING * view.scale;
-  const oX = view.x % sp, oY = view.y % sp;
-  const col = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
-
-  ctx.save();
-  if (bgPattern === 'dots') {
-    ctx.fillStyle = col;
-    for (let x = oX; x < w; x += sp)
-      for (let y = oY; y < h; y += sp) {
-        ctx.beginPath();
-        ctx.arc(x, y, Math.max(0.8, view.scale * 0.8), 0, Math.PI * 2);
-        ctx.fill();
-      }
-  } else if (bgPattern === 'grid') {
-    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();
-    for (let x = oX; x < w; x += sp) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
-    for (let y = oY; y < h; y += sp) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
-    ctx.stroke();
-  } else if (bgPattern === 'lines') {
-    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();
-    for (let y = oY; y < h; y += sp) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  if (sp < 4) return;
+  const ox = ((view.x * view.scale) % sp + sp) % sp;
+  const oy = ((view.y * view.scale) % sp + sp) % sp;
+  ctx.fillStyle = dark ? '#333' : '#ddd';
+  if (pattern === 'dots') {
+    for (let x = ox; x < W; x += sp)
+      for (let y = oy; y < H; y += sp)
+        ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+  } else if (pattern === 'grid') {
+    ctx.strokeStyle = dark ? '#333' : '#ddd';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let x = ox; x < W; x += sp) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = oy; y < H; y += sp) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
     ctx.stroke();
   }
+}
+
+// ---- arrow head ----
+export function drawArrowHead(ctx, x1, y1, x2, y2, size) {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  ctx.save();
+  ctx.translate(x2, y2);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(-size, -size * 0.5);
+  ctx.lineTo(0, 0);
+  ctx.lineTo(-size, size * 0.5);
+  ctx.stroke();
   ctx.restore();
 }
 
-/* ── Arrow head (draw.io open-V style) ── */
-export function drawArrowHead(c, x1, y1, x2, y2, strokeWidth) {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const headLen = Math.max(14, strokeWidth * 5);
-  const headAngle = Math.PI / 6; // 30°
-  c.beginPath();
-  c.moveTo(x2 - headLen * Math.cos(angle - headAngle), y2 - headLen * Math.sin(angle - headAngle));
-  c.lineTo(x2, y2);
-  c.lineTo(x2 - headLen * Math.cos(angle + headAngle), y2 - headLen * Math.sin(angle + headAngle));
-  c.stroke();
-}
-
-/**
- * In dark mode, invert near-black colours so strokes stay visible
- * on the dark background. Only affects rendering — stored data is unchanged.
- */
-function adaptColor(color, darkMode) {
-  if (!darkMode || !color) return color;
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
-  if (!m) return color;
-  const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
-  // Perceived luminance — threshold 60 catches #000000 .. ~#333333
-  if (0.299 * r + 0.587 * g + 0.114 * b < 60) {
-    return `rgb(${255 - r},${255 - g},${255 - b})`;
-  }
+/** Adapt color for dark mode: invert near-black colors */
+export function adaptColor(color, dark) {
+  if (!dark) return color;
+  if (!color) return '#fff';
+  const c = color.toLowerCase().replace(/\s/g, '');
+  if (c === '#000' || c === '#000000' || c === '#1e1e1e' || c === 'black' ||
+      c === 'rgb(0,0,0)' || c === 'rgb(30,30,30)') return '#ffffff';
   return color;
 }
 
-/* ── Single stroke ── */
-export function renderStroke(c, s, getImage, darkMode) {
-  c.save();
+// ---- render a single stroke ----
+export function renderStroke(ctx, s, view, dark) {
+  ctx.save();
+  const color = adaptColor(s.color, dark);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = (s.width || 3) * view.scale;
+  ctx.globalAlpha = s.opacity ?? 1;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
 
+  const tx = (x) => (x + view.x) * view.scale;
+  const ty = (y) => (y + view.y) * view.scale;
+
+  // Apply rotation
   if (s.rotation) {
-    const { cx, cy } = getCenter(s);
-    c.translate(cx, cy);
-    c.rotate(s.rotation);
-    c.translate(-cx, -cy);
+    const bb = getBBox(s);
+    if (bb) {
+      const cx = tx(bb.x + bb.w / 2), cy = ty(bb.y + bb.h / 2);
+      ctx.translate(cx, cy);
+      ctx.rotate(s.rotation);
+      ctx.translate(-cx, -cy);
+    }
   }
-
-  const col = adaptColor(s.color || '#1e1e1e', darkMode);
-  c.lineWidth = s.width || 3;
-  c.strokeStyle = col;
-  c.fillStyle = col;
-  c.globalAlpha = s.opacity ?? 1;
-  c.lineCap = 'round';
-  c.lineJoin = 'round';
-
-  // Legacy eraser strokes (from old saves): render as pen strokes
-  // New eraser is object-based and doesn't create strokes.
 
   switch (s.type) {
-    case 'pen': case 'eraser':
+    case 'pen': case 'eraser': {
       if (!s.points || s.points.length < 2) break;
-      c.beginPath(); c.moveTo(s.points[0].x, s.points[0].y);
-      for (let i = 1; i < s.points.length; i++) c.lineTo(s.points[i].x, s.points[i].y);
-      c.stroke(); break;
-
+      if (s.type === 'eraser') {
+        ctx.strokeStyle = dark ? '#1e1e1e' : '#f5f5f5';
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.beginPath();
+      ctx.moveTo(tx(s.points[0].x), ty(s.points[0].y));
+      for (let j = 1; j < s.points.length; j++) ctx.lineTo(tx(s.points[j].x), ty(s.points[j].y));
+      ctx.stroke();
+      break;
+    }
     case 'line':
-      c.beginPath(); c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); c.stroke(); break;
-
-    case 'arrow': {
-      c.beginPath(); c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); c.stroke();
-      const sw = c.lineWidth;
-      c.lineCap = 'butt'; c.lineJoin = 'miter'; c.miterLimit = 10;
-      c.lineWidth = Math.max(2, sw);
-      drawArrowHead(c, s.x1, s.y1, s.x2, s.y2, sw);
+      ctx.beginPath();
+      ctx.moveTo(tx(s.x1), ty(s.y1));
+      ctx.lineTo(tx(s.x2), ty(s.y2));
+      ctx.stroke();
       break;
-    }
-
+    case 'arrow':
+      ctx.beginPath();
+      ctx.moveTo(tx(s.x1), ty(s.y1));
+      ctx.lineTo(tx(s.x2), ty(s.y2));
+      ctx.stroke();
+      drawArrowHead(ctx, tx(s.x1), ty(s.y1), tx(s.x2), ty(s.y2), Math.max(10, (s.width || 3) * view.scale * 3));
+      break;
     case 'connector': {
-      c.strokeStyle = s.color || '#6366f1';
-      c.lineWidth = s.width || 2;
-      c.setLineDash([]);
-      c.beginPath(); c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); c.stroke();
-      c.lineCap = 'butt'; c.lineJoin = 'miter'; c.miterLimit = 10;
-      drawArrowHead(c, s.x1, s.y1, s.x2, s.y2, 2);
+      ctx.beginPath();
+      ctx.moveTo(tx(s.x1), ty(s.y1));
+      ctx.lineTo(tx(s.x2), ty(s.y2));
+      ctx.stroke();
+      drawArrowHead(ctx, tx(s.x1), ty(s.y1), tx(s.x2), ty(s.y2), Math.max(10, (s.width || 3) * view.scale * 3));
+      // Draw anchor dots
+      ctx.fillStyle = dark ? '#4fc3f7' : '#1976d2';
+      for (const p of [{x: s.x1, y: s.y1}, {x: s.x2, y: s.y2}]) {
+        ctx.beginPath();
+        ctx.arc(tx(p.x), ty(p.y), 4 * view.scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     }
-
-    case 'rect':
-      if (s.filled) c.fillRect(s.x1, s.y1, s.x2 - s.x1, s.y2 - s.y1);
-      c.strokeRect(s.x1, s.y1, s.x2 - s.x1, s.y2 - s.y1); break;
-
+    case 'rect': {
+      const rx = tx(Math.min(s.x1, s.x2)), ry = ty(Math.min(s.y1, s.y2));
+      const rw = Math.abs(s.x2 - s.x1) * view.scale, rh = Math.abs(s.y2 - s.y1) * view.scale;
+      if (s.filled) ctx.fillRect(rx, ry, rw, rh);
+      ctx.strokeRect(rx, ry, rw, rh);
+      break;
+    }
     case 'circle': {
-      const rx = (s.x2 - s.x1) / 2, ry = (s.y2 - s.y1) / 2;
-      c.beginPath();
-      c.ellipse(s.x1 + rx, s.y1 + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
-      if (s.filled) c.fill(); c.stroke(); break;
+      const cx = tx((s.x1 + s.x2) / 2), cy = ty((s.y1 + s.y2) / 2);
+      const rx = Math.abs(s.x2 - s.x1) / 2 * view.scale, ry = Math.abs(s.y2 - s.y1) / 2 * view.scale;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2);
+      if (s.filled) ctx.fill();
+      ctx.stroke();
+      break;
     }
-
+    case 'triangle': case 'diamond': case 'star': case 'hexagon': {
+      const verts = getShapeVertices(s.type, s.x1, s.y1, s.x2, s.y2);
+      if (verts.length < 3) break;
+      ctx.beginPath();
+      ctx.moveTo(tx(verts[0].x), ty(verts[0].y));
+      for (let j = 1; j < verts.length; j++) ctx.lineTo(tx(verts[j].x), ty(verts[j].y));
+      ctx.closePath();
+      if (s.filled) ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'frame': {
+      const rx = tx(Math.min(s.x1, s.x2)), ry = ty(Math.min(s.y1, s.y2));
+      const rw = Math.abs(s.x2 - s.x1) * view.scale, rh = Math.abs(s.y2 - s.y1) * view.scale;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = dark ? '#666' : '#999';
+      ctx.lineWidth = 1.5 * view.scale;
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.setLineDash([]);
+      // Label
+      const label = s.label || 'Frame';
+      ctx.font = `${12 * view.scale}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = dark ? '#888' : '#666';
+      ctx.fillText(label, rx + 4 * view.scale, ry - 4 * view.scale);
+      break;
+    }
     case 'text': {
-      const fs = s.fontSize || 16;
-      const bold = s.bold ? 'bold ' : '';
-      const italic = s.italic ? 'italic ' : '';
-      c.font = `${italic}${bold}${fs}px 'Inter',sans-serif`;
-      c.globalCompositeOperation = 'source-over';
-      (s.text || '').split('\n').forEach((l, i) =>
-        c.fillText(l, s.x, s.y + i * fs * 1.3)
-      );
+      const fs = (s.fontSize || 16) * view.scale;
+      const weight = s.bold ? 'bold' : 'normal';
+      const style = s.italic ? 'italic' : 'normal';
+      ctx.font = `${style} ${weight} ${fs}px Inter, system-ui, sans-serif`;
+      const lines = (s.text || '').split('\n');
+      for (let li = 0; li < lines.length; li++) {
+        ctx.fillText(lines[li], tx(s.x), ty(s.y) + li * fs * 1.3);
+      }
       break;
     }
-
     case 'image': {
-      const img = getImage(s.data);
-      if (img) c.drawImage(img, s.x, s.y, s.w, s.h);
+      if (s._img && s._img.complete) {
+        const w = (s.w || s._img.naturalWidth || 100) * view.scale;
+        const h = (s.h || s._img.naturalHeight || 100) * view.scale;
+        ctx.drawImage(s._img, tx(s.x), ty(s.y), w, h);
+      }
       break;
     }
   }
 
-  c.globalCompositeOperation = 'source-over';
-  c.restore();
-}
-
-/* ── Selection overlay for line-like strokes ── */
-function drawLineSelectionBox(c, s, view) {
-  const lw = 1.5 / view.scale;
-  const hs = HANDLE_SIZE / view.scale;
-
-  c.save();
-  if (s.rotation) {
-    const { cx, cy } = getCenter(s);
-    c.translate(cx, cy);
-    c.rotate(s.rotation);
-    c.translate(-cx, -cy);
+  // Draw shape label (text on shapes)
+  if (s.label && s.type !== 'frame' && s.type !== 'text') {
+    const bb = getBBox(s);
+    if (bb) {
+      const cx = tx(bb.x + bb.w / 2), cy = ty(bb.y + bb.h / 2);
+      const fs = (s.fontSize || 14) * view.scale;
+      ctx.font = `${fs}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = adaptColor(s.color || '#1e1e1e', dark);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const labelLines = s.label.split('\n');
+      for (let li = 0; li < labelLines.length; li++) {
+        ctx.fillText(labelLines[li], cx, cy + (li - (labelLines.length - 1) / 2) * fs * 1.3);
+      }
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+    }
   }
 
-  // Dashed line between endpoints
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  c.setLineDash([6 / view.scale, 4 / view.scale]);
-  c.beginPath(); c.moveTo(s.x1, s.y1); c.lineTo(s.x2, s.y2); c.stroke();
-  c.setLineDash([]);
-
-  // Endpoint 1 — larger filled circle with ring
-  c.fillStyle = '#ffffff'; c.strokeStyle = '#6366f1'; c.lineWidth = lw * 1.5;
-  c.beginPath(); c.arc(s.x1, s.y1, hs * 1.1, 0, Math.PI * 2); c.fill(); c.stroke();
-  c.fillStyle = '#6366f1';
-  c.beginPath(); c.arc(s.x1, s.y1, hs * 0.4, 0, Math.PI * 2); c.fill();
-
-  // Endpoint 2 — larger filled circle with ring
-  c.fillStyle = '#ffffff'; c.strokeStyle = '#6366f1'; c.lineWidth = lw * 1.5;
-  c.beginPath(); c.arc(s.x2, s.y2, hs * 1.1, 0, Math.PI * 2); c.fill(); c.stroke();
-  c.fillStyle = '#6366f1';
-  c.beginPath(); c.arc(s.x2, s.y2, hs * 0.4, 0, Math.PI * 2); c.fill();
-
-  // Rotation handle — perpendicular to midpoint
-  const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2;
-  const dx = s.x2 - s.x1, dy = s.y2 - s.y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const rotDist = ROTATE_HANDLE_DIST / view.scale;
-  const rotX = mx + (-dy / len) * rotDist;
-  const rotY = my + (dx / len) * rotDist;
-
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  c.beginPath(); c.moveTo(mx, my); c.lineTo(rotX, rotY); c.stroke();
-  c.fillStyle = '#ffffff'; c.beginPath();
-  c.arc(rotX, rotY, hs * 0.7, 0, Math.PI * 2); c.fill(); c.stroke();
-  // Rotation arrow icon
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw * 0.8;
-  c.beginPath();
-  c.arc(rotX, rotY, hs * 0.4, -Math.PI * 0.8, Math.PI * 0.3);
-  c.stroke();
-
-  c.restore();
+  ctx.restore();
 }
 
-/* ── Selection overlay for shape strokes ── */
-function drawShapeSelectionBox(c, s, view) {
+// ---- selection box for line-like strokes ----
+function drawLineSelectionBox(ctx, s, view) {
+  const toScreen = (x, y) => {
+    let rx = x, ry = y;
+    if (s.rotation) {
+      const bb = getBBox(s);
+      if (bb) {
+        const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2;
+        const rp = rotatePoint(x, y, cx, cy, s.rotation);
+        rx = rp.x; ry = rp.y;
+      }
+    }
+    return { x: (rx + view.x) * view.scale, y: (ry + view.y) * view.scale };
+  };
+  const p1 = toScreen(s.x1, s.y1);
+  const p2 = toScreen(s.x2, s.y2);
+  const r = 5;
+  ctx.strokeStyle = '#2196f3';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+
+  // Endpoint circles
+  for (const p of [p1, p2]) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// ---- selection box for shapes ----
+export function drawSelectionBox(ctx, s, view) {
+  if (!s) return;
+  if (isLineLike(s.type)) return drawLineSelectionBox(ctx, s, view);
+
   const bb = getBBox(s);
   if (!bb) return;
 
-  c.save();
+  const hs = HANDLE_SIZE;
+  ctx.save();
+
+  // Apply rotation
+  const cx = (bb.x + bb.w / 2 + view.x) * view.scale;
+  const cy = (bb.y + bb.h / 2 + view.y) * view.scale;
   if (s.rotation) {
-    const { cx, cy } = getCenter(s);
-    c.translate(cx, cy);
-    c.rotate(s.rotation);
-    c.translate(-cx, -cy);
+    ctx.translate(cx, cy);
+    ctx.rotate(s.rotation);
+    ctx.translate(-cx, -cy);
   }
 
-  const lw = 1.5 / view.scale;
-  const hs = HANDLE_SIZE / view.scale;
+  const rx = (bb.x + view.x) * view.scale;
+  const ry = (bb.y + view.y) * view.scale;
+  const rw = bb.w * view.scale;
+  const rh = bb.h * view.scale;
 
-  // Dashed bounding box
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  c.setLineDash([6 / view.scale, 4 / view.scale]);
-  c.strokeRect(bb.x, bb.y, bb.w, bb.h);
-  c.setLineDash([]);
+  // Dashed outline
+  ctx.strokeStyle = '#2196f3';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.strokeRect(rx, ry, rw, rh);
+  ctx.setLineDash([]);
 
   // Corner handles
-  c.fillStyle = '#ffffff'; c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  const corners = [
-    [bb.x, bb.y], [bb.x + bb.w, bb.y],
-    [bb.x, bb.y + bb.h], [bb.x + bb.w, bb.y + bb.h],
-  ];
-  for (const [cx, cy] of corners) {
-    c.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
-    c.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+  for (const [hx, hy] of [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]]) {
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(hx - hs, hy - hs, hs * 2, hs * 2);
+    ctx.strokeRect(hx - hs, hy - hs, hs * 2, hs * 2);
   }
 
-  // Rotation handle (above top-center)
-  const rotX = bb.x + bb.w / 2;
-  const rotY = bb.y - ROTATE_HANDLE_DIST / view.scale;
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  c.beginPath(); c.moveTo(bb.x + bb.w / 2, bb.y); c.lineTo(rotX, rotY); c.stroke();
-  c.fillStyle = '#ffffff'; c.beginPath();
-  c.arc(rotX, rotY, hs * 0.7, 0, Math.PI * 2); c.fill(); c.stroke();
-  c.strokeStyle = '#6366f1'; c.lineWidth = lw * 0.8;
-  c.beginPath();
-  c.arc(rotX, rotY, hs * 0.4, -Math.PI * 0.8, Math.PI * 0.3);
-  c.stroke();
+  // Rotate handle
+  const rtx = rx + rw / 2, rty = ry - ROTATE_HANDLE_DIST * view.scale;
+  ctx.beginPath();
+  ctx.moveTo(rx + rw / 2, ry);
+  ctx.lineTo(rtx, rty);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(rtx, rty, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.stroke();
 
-  // Connector anchor dots
-  c.fillStyle = 'rgba(99,102,241,0.3)'; c.strokeStyle = '#6366f1'; c.lineWidth = lw;
-  const anchors = getConnectorAnchors(s);
-  for (const a of anchors) {
-    c.beginPath(); c.arc(a.x, a.y, hs * 0.5, 0, Math.PI * 2); c.fill(); c.stroke();
-  }
-
-  c.restore();
+  ctx.restore();
 }
 
-/**
- * Draw the appropriate selection overlay for a stroke.
- */
-export function drawSelectionBox(c, s, view) {
-  if (isLineLike(s.type)) {
-    drawLineSelectionBox(c, s, view);
-  } else {
-    drawShapeSelectionBox(c, s, view);
+// ---- rubber band selection rect ----
+export function drawRubberBand(ctx, rect, view) {
+  if (!rect) return;
+  const x = (rect.x + view.x) * view.scale;
+  const y = (rect.y + view.y) * view.scale;
+  const w = rect.w * view.scale;
+  const h = rect.h * view.scale;
+  ctx.save();
+  ctx.strokeStyle = '#2196f3';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(33, 150, 243, 0.08)';
+  ctx.fillRect(x, y, w, h);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ---- alignment guides ----
+export function drawAlignGuides(ctx, guides, view, W, H) {
+  if (!guides || !guides.length) return;
+  ctx.save();
+  ctx.strokeStyle = '#f44336';
+  ctx.lineWidth = 0.7;
+  ctx.setLineDash([3, 3]);
+  for (const g of guides) {
+    ctx.beginPath();
+    if (g.axis === 'x') {
+      const sx = (g.pos + view.x) * view.scale;
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, H);
+    } else {
+      const sy = (g.pos + view.y) * view.scale;
+      ctx.moveTo(0, sy);
+      ctx.lineTo(W, sy);
+    }
+    ctx.stroke();
   }
+  ctx.setLineDash([]);
+  ctx.restore();
 }

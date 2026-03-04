@@ -24,6 +24,11 @@ export function send(msg) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
+export function sendStroke(data) { send({ type: 'stroke', data }); }
+export function sendCursor(x, y) { send({ type: 'cursor', x, y }); }
+export function sendClear() { send({ type: 'clear' }); }
+export function sendUndo() { send({ type: 'undo' }); }
+
 export function connect(room) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws?room=${room}`);
@@ -92,6 +97,22 @@ export function connect(room) {
           return { layers };
         });
         break;
+
+      case 'chat': {
+        const user = st.collabUsers.find(u => u.id === msg.userId);
+        const chatMsg = {
+          id: msg.id || Date.now() + '_' + Math.random().toString(36).slice(2, 5),
+          name: user?.name || msg.userId?.slice(0, 6) || '?',
+          color: user?.color || '#999',
+          text: msg.text,
+          time: Date.now(),
+          own: false,
+        };
+        setState(s => ({ chatMessages: [...s.chatMessages, chatMsg] }));
+        // Auto-open chat on new message
+        if (!st.chatOpen) setState({ chatOpen: true });
+        break;
+      }
     }
   };
 

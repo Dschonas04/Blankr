@@ -13,13 +13,15 @@ export default function PropertiesBar() {
     setState({ color: c });
     if (tool === 'eraser') setState({ tool: 'pen' });
     // Also update the selected stroke's colour
-    if (getState().selectedStrokeIdx != null) {
+    if (getState().selectedIdxs.length > 0) {
       pushUndo();
       const st = getState();
       const layers = st.layers.map((l, li) => {
         if (li !== st.activeLayer) return l;
         const strokes = [...l.strokes];
-        strokes[st.selectedStrokeIdx] = { ...strokes[st.selectedStrokeIdx], color: c };
+        for (const idx of st.selectedIdxs) {
+          if (strokes[idx]) strokes[idx] = { ...strokes[idx], color: c };
+        }
         return { ...l, strokes };
       });
       setState({ layers });

@@ -79,6 +79,9 @@ wss.on("connection", (ws, req) => {
           room.strokes.pop();
           broadcast(room, ws, { type: "undo", userId });
           break;
+        case "chat":
+          broadcast(room, ws, { type: "chat", userId, text: msg.text, id: msg.id });
+          break;
       }
     } catch (_) { /* ignore */ }
   });
