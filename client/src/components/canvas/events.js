@@ -1,6 +1,6 @@
 // Canvas - Event Handlers & Render Loop
 
-import { getState, setState } from '../../store.js';
+import { getState, setState, subscribe } from '../../store.js';
 import {
   LASER_FADE_MS, HANDLE_SIZE, CONNECTOR_SNAP_DIST,
   ENDPOINT_HIT_RADIUS, SNAP_THRESHOLD, NUDGE_STEP, NUDGE_STEP_LARGE, GRID_SIZE
@@ -1060,6 +1060,27 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   window.addEventListener('paste', onPaste);
   window.addEventListener('resize', resize);
 
+  // Subscribe to store changes so the canvas re-renders when state changes
+  // from outside (dark mode toggle, undo/redo, bgPattern, etc.)
+  let prevDarkMode = getState().darkMode;
+  let prevBgPattern = getState().bgPattern;
+  let prevLayers = getState().layers;
+  let prevSelectedIdxs = getState().selectedIdxs;
+  let prevView = getState().view;
+  const unsubscribe = subscribe(() => {
+    const s = getState();
+    if (s.darkMode !== prevDarkMode || s.bgPattern !== prevBgPattern ||
+        s.layers !== prevLayers || s.selectedIdxs !== prevSelectedIdxs ||
+        s.view !== prevView) {
+      prevDarkMode = s.darkMode;
+      prevBgPattern = s.bgPattern;
+      prevLayers = s.layers;
+      prevSelectedIdxs = s.selectedIdxs;
+      prevView = s.view;
+      needsRender = true;
+    }
+  });
+
   // Load images from saved state
   const initState = getState();
   for (const layer of initState.layers) {
@@ -1088,5 +1109,6 @@ export function setupCanvasEvents(canvas, setTextEdit) {
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('paste', onPaste);
     window.removeEventListener('resize', resize);
+    unsubscribe();
   };
 }
