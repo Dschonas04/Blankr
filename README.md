@@ -1,78 +1,160 @@
 # Blankr – Whiteboard
 
-Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React (Vite) als Frontend und Express mit WebSockets für Echtzeit-Zusammenarbeit.
+Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und Express mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
 
 ## Features
 
-- **Zeichenwerkzeuge** – Stift, Linie, Pfeil, Rechteck, Kreis, Text, Radierer, Laser-Pointer
-- **Farbauswahl** – Volle Farbpalette über den Color Picker
-- **Rückgängig / Wiederholen** – Undo/Redo mit Tastenkombinationen (`Ctrl+Z` / `Ctrl+Shift+Z`)
-- **Zoom & Pan** – Zoom-Controls und Hand-Tool zum Navigieren
-- **Layer-System** – Ebenen-Panel zur Organisation von Zeichnungen
-- **Sticky Notes** – Notizen direkt auf dem Whiteboard platzieren
-- **Echtzeit-Kollaboration** – Mehrere Nutzer zeichnen gleichzeitig über WebSockets
-- **Dark Mode** – Umschalten zwischen hellem und dunklem Design
-- **Fullscreen** – Vollbild-Modus für ungestörtes Arbeiten
-- **Touch-Support** – Zeichnen auf mobilen Geräten
-- **Hochverfügbarkeit** – Docker Compose mit Health-Checks und Replicas
+### Zeichenwerkzeuge
+- **Stift** – Freihandzeichnen mit konfigurierbarer Strichstärke
+- **Linie / Pfeil** – Gerade Linien und Pfeile im draw.io-Stil (offene V-Pfeilspitzen)
+- **Rechteck / Kreis** – Geometrische Formen, optional mit Füllung
+- **Text** – WYSIWYG-Inline-Editor mit formatierter Textbearbeitung (Fett, Kursiv, Schriftgröße)
+- **Radierer** – Objekt-basierter Radierer (entfernt ganze Strokes per Klick/Ziehen)
+- **Laser-Pointer** – Roter Laser-Cursor mit verblassender Spur
+- **Connector** – Verbindungspfeile zwischen Objekten mit automatischem Anchor-Snapping
+
+### Auswahl & Bearbeitung
+- **Select-Tool** – Objekte per Klick auswählen
+- **Verschieben** – Ausgewählte Objekte per Drag & Drop bewegen
+- **Größe ändern** – Eck-Handles zum Skalieren von Formen
+- **Drehen** – Rotations-Handle für beliebige Drehwinkel
+- **Endpunkte ziehen** – Anfangs-/Endpunkte von Linien, Pfeilen und Connectoren einzeln verschieben
+- **Farbe ändern** – Farbauswahl wirkt auch auf das aktuell ausgewählte Objekt
+- **Löschen** – Auswahl mit `Delete`/`Backspace` entfernen
+- **Text bearbeiten** – Doppelklick auf Text öffnet den Inline-Editor
+
+### Canvas & Navigation
+- **Zoom & Pan** – Mausrad-Zoom, Hand-Tool und Space-Drag
+- **Pinch-to-Zoom** – Touch-Gesten auf mobilen Geräten
+- **Hintergrundmuster** – Punkte, Raster, Linien oder leer
+- **HiDPI-Support** – Scharfes Rendering auf Retina-Displays (`devicePixelRatio`)
+
+### Organisation
+- **Layer-System** – Ebenen-Panel zur Organisation von Zeichnungen mit Sichtbarkeit und Deckkraft
+- **Sticky Notes** – Farbige Haftnotizen direkt auf dem Whiteboard
+- **Undo / Redo** – Unbegrenzte Rückgängig-History (bis zu 50 Schritte)
+
+### Export
+- **PNG** – Pixel-Export mit korrektem Hintergrund
+- **JPEG** – Komprimierter Bild-Export
+- **SVG** – Vektorgrafik-Export mit allen Formen und Pfeilen
+- **Drucken / PDF** – Über den Browser-Druckdialog
+
+### Echtzeit-Kollaboration
+- **WebSocket-Sync** – Strokes, Cursor-Positionen und Clear-Events live synchronisiert
+- **Raum-System** – Beitritt über URL-Parameter `?room=<id>`
+- **Nutzerfarben** – Jeder Teilnehmer erhält automatisch eine eigene Farbe
+- **Remote-Cursor** – Cursor anderer Teilnehmer werden in Echtzeit angezeigt
+
+### Weitere Features
+- **Dark Mode** – Umschalten zwischen hellem und dunklem Design mit automatischer Farbanpassung (dunkle Strokes werden im Dark Mode invertiert)
+- **Fullscreen** – Vollbild-Modus mit Auto-Hide der UI
+- **Drag & Drop Bilder** – Bilder direkt auf das Canvas ziehen
+- **Autosave** – Automatisches Speichern im `localStorage`
+- **Touch-Support** – Vollständige Touch-Unterstützung inkl. Pinch-Zoom
 
 ## Schnellstart
 
 ### Voraussetzungen
 
 - [Docker](https://www.docker.com/) und [Docker Compose](https://docs.docker.com/compose/)
-- [Node.js](https://nodejs.org/) (v20+) für lokale Entwicklung
 
 ### Mit Docker starten
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 Die Anwendung ist dann unter [http://localhost:8080](http://localhost:8080) erreichbar.
 
-### Lokale Entwicklung
-
-```bash
-# Server starten
-cd server && npm install && npm start
-
-# In einem separaten Terminal: Client starten
-cd client && npm install && npm run dev
-```
-
-### Stoppen (Docker)
+### Stoppen
 
 ```bash
 docker compose down
 ```
 
-## Echtzeit-Kollaboration
-
-Blankr unterstützt Echtzeit-Zusammenarbeit über WebSockets:
-
-- Raum beitreten: `http://localhost:8080?room=<room-id>`
-- Strokes, Cursor-Positionen und Clear-Events werden live synchronisiert
-- Jeder Nutzer erhält automatisch eine eigene Farbe
-
 ## Tastenkombinationen
 
-| Kürzel             | Aktion            |
-|--------------------|-------------------|
-| `P`                | Stift             |
-| `L`                | Linie             |
-| `A`                | Pfeil             |
-| `R`                | Rechteck          |
-| `O`                | Kreis             |
-| `T`                | Text              |
-| `E`                | Radierer          |
-| `Z`                | Laser-Pointer     |
-| `H`                | Hand (Pan)        |
-| `F`                | Fullscreen         |
-| `D`                | Dark Mode          |
-| `Ctrl + Z`         | Rückgängig        |
-| `Ctrl + Shift + Z` | Wiederholen       |
-| `Escape`           | Fullscreen beenden |
+| Kürzel             | Aktion              |
+|--------------------|---------------------|
+| `V`                | Auswählen           |
+| `P`                | Stift               |
+| `L`                | Linie               |
+| `A`                | Pfeil               |
+| `R`                | Rechteck            |
+| `O`                | Kreis               |
+| `T`                | Text                |
+| `E`                | Radierer            |
+| `C`                | Connector           |
+| `Z`                | Laser-Pointer       |
+| `H`                | Hand (Pan)          |
+| `F`                | Fullscreen          |
+| `D`                | Dark Mode           |
+| `Space` (halten)   | Pan (temporär)      |
+| `Delete`/`Backspace` | Auswahl löschen   |
+| `Ctrl + Z`         | Rückgängig          |
+| `Ctrl + Shift + Z` | Wiederholen         |
+| `Escape`           | Fullscreen beenden  |
+
+## Architektur
+
+### Tech-Stack
+- **Frontend** – React 19, Vite 6, HTML5 Canvas 2D
+- **Backend** – Express 4, ws 8 (WebSockets)
+- **Runtime** – Node.js 20 (Alpine), Docker
+- **State** – Custom Store mit `useSyncExternalStore` (kein Redux/Zustand)
+
+### Canvas-Modul
+Die Canvas-Logik ist in eigenständige Module aufgeteilt:
+
+| Modul         | Verantwortung                                     |
+|---------------|--------------------------------------------------|
+| `constants.js` | Shared Konstanten (Spacing, Handle-Größen etc.) |
+| `geometry.js`  | Pure Geometrie-Funktionen (BBox, Move, Resize)  |
+| `hitTest.js`   | Hit Testing mit Rotations-Support               |
+| `render.js`    | Alle Draw-Calls (Background, Strokes, Selection)|
+| `events.js`    | Event-Handler + Render-Loop                     |
+
+## Projektstruktur
+
+```
+Blankr/
+├── client/
+│   ├── src/
+│   │   ├── App.jsx           # Haupt-Komponente + Keyboard Shortcuts
+│   │   ├── App.css           # Styles (inkl. Dark Mode Tokens)
+│   │   ├── store.js          # State-Management (useSyncExternalStore)
+│   │   ├── collab.js         # WebSocket-Kollaboration
+│   │   ├── main.jsx          # Entry Point
+│   │   └── components/
+│   │       ├── Canvas.jsx    # React-Shell (WYSIWYG-Editor + Toolbar)
+│   │       ├── canvas/       # Canvas-Engine (modular)
+│   │       │   ├── constants.js
+│   │       │   ├── geometry.js
+│   │       │   ├── hitTest.js
+│   │       │   ├── render.js
+│   │       │   ├── events.js
+│   │       │   └── index.js
+│   │       ├── Toolbar.jsx
+│   │       ├── PropertiesBar.jsx
+│   │       ├── ActionBar.jsx
+│   │       ├── ZoomControls.jsx
+│   │       ├── LayerPanel.jsx
+│   │       ├── CollabBar.jsx
+│   │       ├── StickyNotes.jsx
+│   │       └── Toast.jsx
+│   ├── index.html
+│   ├── vite.config.js
+│   └── package.json
+├── server/
+│   ├── index.js              # Express + WebSocket Server
+│   └── package.json
+├── tests/
+│   └── app.test.js
+├── Dockerfile                # Multi-Stage Build (node:20-alpine)
+├── docker-compose.yml        # Container-Orchestrierung
+└── README.md
+```
 
 ## Hochverfügbarkeit (HA)
 
@@ -81,44 +163,6 @@ Die `docker-compose.yml` unterstützt:
 - **Health-Checks** – Server wird regelmäßig auf Erreichbarkeit geprüft
 - **Restart-Policy** – Container wird bei Ausfall automatisch neu gestartet
 - **Replicas** – Mehrere Instanzen können über `deploy.replicas` konfiguriert werden
-
-```yaml
-# Anzahl der Replicas anpassen:
-deploy:
-  replicas: 2
-```
-
-## Tests
-
-Tests befinden sich im Ordner `tests/` und können per Node.js ausgeführt werden:
-
-```bash
-node tests/app.test.js
-```
-
-## Projektstruktur
-
-```
-Blankr/
-├── client/
-│   ├── src/
-│   │   ├── App.jsx          # Haupt-Komponente
-│   │   ├── store.js         # Zustand (Zustand-Store)
-│   │   ├── collab.js        # WebSocket-Kollaboration
-│   │   ├── main.jsx         # Entry Point
-│   │   └── components/      # UI-Komponenten
-│   ├── index.html           # HTML-Template
-│   ├── vite.config.js       # Vite-Konfiguration
-│   └── package.json
-├── server/
-│   ├── index.js             # Express + WebSocket Server
-│   └── package.json
-├── tests/
-│   └── app.test.js          # Unit-Tests
-├── Dockerfile               # Multi-Stage Container-Image
-├── docker-compose.yml       # Container-Orchestrierung
-└── README.md                # Dokumentation
-```
 
 ## Lizenz
 

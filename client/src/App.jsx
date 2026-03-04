@@ -48,6 +48,7 @@ export default function App() {
       if (e.code === 'Space') return; // handled by Canvas
 
       switch (e.key.toLowerCase()) {
+        case 'v': setState({ tool: 'select', selectedStrokeIdx: null }); break;
         case 'p': setState({ tool: 'pen' }); break;
         case 'l': setState({ tool: 'line' }); break;
         case 'a': setState({ tool: 'arrow' }); break;
@@ -55,6 +56,7 @@ export default function App() {
         case 'o': setState({ tool: 'circle' }); break;
         case 't': setState({ tool: 'text' }); break;
         case 'e': setState({ tool: 'eraser' }); break;
+        case 'c': if (!cmd) setState({ tool: 'connector' }); break;
         case 'z': if (!cmd) setState({ tool: 'laser' }); break;
         case 'h': setState({ tool: 'hand' }); break;
         case 'f': if (!cmd) setState(s => ({ fullscreen: !s.fullscreen })); break;

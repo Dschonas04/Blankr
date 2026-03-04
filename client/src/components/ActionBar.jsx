@@ -13,8 +13,9 @@ function strokeSVG(s) {
     case 'line': return `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" ${st}/>`;
     case 'arrow': {
       let r = `<line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}" ${st}/>`;
-      const a = Math.atan2(s.y2 - s.y1, s.x2 - s.x1), h = Math.max(10, s.width * 4);
-      r += `<polygon points="${s.x2},${s.y2} ${s.x2 - h * Math.cos(a - Math.PI / 7)},${s.y2 - h * Math.sin(a - Math.PI / 7)} ${s.x2 - h * Math.cos(a + Math.PI / 7)},${s.y2 - h * Math.sin(a + Math.PI / 7)}" fill="${s.color}" opacity="${s.opacity ?? 1}"/>`;
+      const a = Math.atan2(s.y2 - s.y1, s.x2 - s.x1), h = Math.max(14, s.width * 5);
+      const ha = Math.PI / 6;
+      r += `<polyline points="${s.x2 - h * Math.cos(a - ha)},${s.y2 - h * Math.sin(a - ha)} ${s.x2},${s.y2} ${s.x2 - h * Math.cos(a + ha)},${s.y2 - h * Math.sin(a + ha)}" fill="none" stroke="${s.color}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" opacity="${s.opacity ?? 1}"/>`;
       return r;
     }
     case 'rect': return `<rect x="${Math.min(s.x1, s.x2)}" y="${Math.min(s.y1, s.y2)}" width="${Math.abs(s.x2 - s.x1)}" height="${Math.abs(s.y2 - s.y1)}" ${st}/>`;
@@ -70,10 +71,13 @@ export default function ActionBar() {
   }
 
   function handleClear() {
+    const hasStrokes = getState().layers.some(l => l.strokes.length > 0);
+    if (!hasStrokes) { showToast('Canvas ist bereits leer'); return; }
+    if (!window.confirm('⚠️ Wirklich ALLES löschen?\n\nAlle Zeichnungen auf allen Ebenen werden entfernt. Diese Aktion kann mit Strg+Z rückgängig gemacht werden.')) return;
     pushUndo();
-    setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })) }));
+    setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })), selectedStrokeIdx: null }));
     scheduleAutosave();
-    showToast('🗑 Canvas gelöscht');
+    showToast('🗑 Alles gelöscht');
     if (collab.isConnected()) collab.send({ type: 'clear' });
   }
 
@@ -103,7 +107,7 @@ export default function ActionBar() {
     const c2 = document.createElement('canvas');
     c2.width = cvs.width; c2.height = cvs.height;
     const c2x = c2.getContext('2d');
-    c2x.fillStyle = darkMode ? '#18181f' : '#fff';
+    c2x.fillStyle = darkMode ? '#1e1e32' : '#fff';
     c2x.fillRect(0, 0, c2.width, c2.height);
     c2x.drawImage(cvs, 0, 0);
     const a = document.createElement('a');
@@ -113,12 +117,28 @@ export default function ActionBar() {
     showToast('📸 PNG gespeichert');
   }
 
+  function exportJPEG() {
+    setExportOpen(false);
+    const cvs = document.getElementById('whiteboard');
+    const c2 = document.createElement('canvas');
+    c2.width = cvs.width; c2.height = cvs.height;
+    const c2x = c2.getContext('2d');
+    c2x.fillStyle = darkMode ? '#1e1e32' : '#fff';
+    c2x.fillRect(0, 0, c2.width, c2.height);
+    c2x.drawImage(cvs, 0, 0);
+    const a = document.createElement('a');
+    a.download = 'blankr.jpg';
+    a.href = c2.toDataURL('image/jpeg', 0.92);
+    a.click();
+    showToast('📸 JPEG gespeichert');
+  }
+
   function exportSVG() {
     setExportOpen(false);
     const cvs = document.getElementById('whiteboard');
     const { view, layers } = getState();
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cvs.width}" height="${cvs.height}">`;
-    svg += `<rect width="100%" height="100%" fill="${darkMode ? '#18181f' : '#fff'}"/>`;
+    svg += `<rect width="100%" height="100%" fill="${darkMode ? '#1e1e32' : '#fff'}"/>`;
     svg += `<g transform="translate(${view.x},${view.y}) scale(${view.scale})">`;
     for (const layer of layers) {
       if (!layer.visible) continue;
@@ -221,8 +241,11 @@ export default function ActionBar() {
           <button className="popup-action" onClick={exportPNG}>
             <span className="popup-action-icon">📸</span> Als PNG speichern
           </button>
+          <button className="popup-action" onClick={exportJPEG}>
+            <span className="popup-action-icon">🖼️</span> Als JPEG speichern
+          </button>
           <button className="popup-action" onClick={exportSVG}>
-            <span className="popup-action-icon">🖼</span> Als SVG speichern
+            <span className="popup-action-icon">✏️</span> Als SVG speichern
           </button>
           <button className="popup-action" onClick={exportPDF}>
             <span className="popup-action-icon">📄</span> Drucken / PDF
