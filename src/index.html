@@ -7,35 +7,63 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="toolbar">
-    <div class="toolbar-group">
-      <button id="btn-pen" class="tool-btn active" title="Stift">✏️</button>
-      <button id="btn-eraser" class="tool-btn" title="Radierer">🧹</button>
-    </div>
-
-    <div class="toolbar-group">
-      <label for="color-picker" class="toolbar-label">Farbe</label>
-      <input type="color" id="color-picker" value="#000000">
-    </div>
-
-    <div class="toolbar-group">
-      <label for="size-slider" class="toolbar-label">Größe</label>
-      <input type="range" id="size-slider" min="1" max="50" value="3">
-      <span id="size-value">3</span>
-    </div>
-
-    <div class="toolbar-group">
-      <button id="btn-undo" class="tool-btn" title="Rückgängig">↩️</button>
-      <button id="btn-redo" class="tool-btn" title="Wiederholen">↪️</button>
-    </div>
-
-    <div class="toolbar-group">
-      <button id="btn-clear" class="tool-btn" title="Alles löschen">🗑️</button>
-      <button id="btn-download" class="tool-btn" title="Herunterladen">💾</button>
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <div class="login-box">
+      <h1>Blankr</h1>
+      <p class="login-subtitle">Bitte anmelden</p>
+      <form id="login-form" autocomplete="off">
+        <input type="text" id="login-user" placeholder="Benutzername" required>
+        <input type="password" id="login-pass" placeholder="Passwort" required>
+        <button type="submit" id="login-btn">Anmelden</button>
+        <p id="login-error" class="login-error" hidden>Ungültiger Benutzername oder Passwort</p>
+      </form>
     </div>
   </div>
 
-  <canvas id="whiteboard"></canvas>
+  <!-- App -->
+  <div id="app" hidden>
+    <div id="toolbar">
+      <div class="toolbar-group">
+        <button id="btn-pen" class="tool-btn active" title="Stift">✏️</button>
+        <button id="btn-eraser" class="tool-btn" title="Radierer">🧹</button>
+      </div>
+
+      <div class="toolbar-group">
+        <label for="color-picker" class="toolbar-label">Farbe</label>
+        <input type="color" id="color-picker" value="#000000">
+      </div>
+
+      <div class="toolbar-group">
+        <label for="size-slider" class="toolbar-label">Größe</label>
+        <input type="range" id="size-slider" min="1" max="50" value="3">
+        <span id="size-value">3</span>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btn-undo" class="tool-btn" title="Rückgängig">↩️</button>
+        <button id="btn-redo" class="tool-btn" title="Wiederholen">↪️</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btn-clear" class="tool-btn" title="Alles löschen">🗑️</button>
+        <button id="btn-download" class="tool-btn" title="Herunterladen">💾</button>
+      </div>
+
+      <div class="toolbar-group">
+        <button id="btn-export" class="tool-btn" title="Export (JSON)">📤</button>
+        <button id="btn-import" class="tool-btn" title="Import (JSON)">📥</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+      </div>
+
+      <div class="toolbar-group toolbar-right">
+        <span id="role-badge" class="role-badge"></span>
+        <button id="btn-logout" class="tool-btn" title="Abmelden">🚪</button>
+      </div>
+    </div>
+
+    <canvas id="whiteboard"></canvas>
+  </div>
 
   <script src="app.js"></script>
 </body>
