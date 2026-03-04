@@ -9,17 +9,19 @@ const AUTOSAVE_KEY = 'blankr_state';
 
 /* ── Initial state ── */
 const initial = {
-  tool: 'pen',
+  tool: 'select',
   color: '#1e1e1e',
   lineWidth: 3,
   opacity: 1,
   filled: false,
+  fontSize: 20,
   bgPattern: 'dots',
   darkMode: false,
   fullscreen: false,
   view: { x: 0, y: 0, scale: 1 },
   layers: [{ name: 'Ebene 1', visible: true, opacity: 1, strokes: [] }],
   activeLayer: 0,
+  selectedStrokeIdx: null,
   stickyNotes: [],
   toastMsg: null,
   layerPanelOpen: false,

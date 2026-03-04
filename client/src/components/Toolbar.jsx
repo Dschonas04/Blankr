@@ -2,6 +2,10 @@ import { useStore, setState } from '../store';
 
 const TOOLS = [
   {
+    id: 'select', label: 'Auswählen (V)',
+    icon: <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="m13 13 6 6" /></svg>,
+  },
+  {
     id: 'pen', label: 'Stift (P)',
     icon: <svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>,
   },
@@ -32,6 +36,10 @@ const TOOLS = [
   {
     id: 'laser', label: 'Laser (Z)',
     icon: <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" strokeDasharray="2 3" /></svg>,
+  },
+  {
+    id: 'connector', label: 'Verbinden (C)',
+    icon: <svg viewBox="0 0 24 24"><circle cx="5" cy="5" r="3" /><circle cx="19" cy="19" r="3" /><path d="M8 8l8 8" /></svg>,
   },
   {
     id: 'hand', label: 'Bewegen (H)',

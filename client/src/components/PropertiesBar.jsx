@@ -1,4 +1,4 @@
-import { useStore, setState } from '../store';
+import { useStore, setState, getState, pushUndo, scheduleAutosave } from '../store';
 
 const COLORS = ['#1e1e1e', '#dc2626', '#16a34a', '#2563eb', '#ea580c', '#9333ea'];
 
@@ -12,6 +12,19 @@ export default function PropertiesBar() {
   function setColor(c) {
     setState({ color: c });
     if (tool === 'eraser') setState({ tool: 'pen' });
+    // Also update the selected stroke's colour
+    if (getState().selectedStrokeIdx != null) {
+      pushUndo();
+      const st = getState();
+      const layers = st.layers.map((l, li) => {
+        if (li !== st.activeLayer) return l;
+        const strokes = [...l.strokes];
+        strokes[st.selectedStrokeIdx] = { ...strokes[st.selectedStrokeIdx], color: c };
+        return { ...l, strokes };
+      });
+      setState({ layers });
+      scheduleAutosave();
+    }
   }
 
   return (
