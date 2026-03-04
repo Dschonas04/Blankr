@@ -28,25 +28,25 @@
 }
 
 [data-theme="dark"] {
-  --bg:          #0f0f14;
-  --canvas:      #18181f;
-  --surface:     #1e1e28;
-  --surface-a:   rgba(30,30,40,0.92);
-  --border:      rgba(255,255,255,0.06);
-  --hover:       rgba(255,255,255,0.05);
-  --active-bg:   rgba(99,102,241,0.15);
-  --active-bd:   #818cf8;
-  --accent:      #818cf8;
-  --accent-soft: rgba(129,140,248,0.12);
-  --danger:      #f87171;
-  --text:        #f4f4f5;
-  --text2:       #a1a1aa;
-  --text3:       #52525b;
-  --shadow-sm:   0 1px 3px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.04);
-  --shadow-md:   0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
-  --shadow-lg:   0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
-  --dot:         rgba(255,255,255,0.05);
-  --grid:        rgba(255,255,255,0.04);
+  --bg:          #1a1a2e;
+  --canvas:      #1e1e32;
+  --surface:     #252542;
+  --surface-a:   rgba(37,37,66,0.94);
+  --border:      rgba(255,255,255,0.08);
+  --hover:       rgba(255,255,255,0.07);
+  --active-bg:   rgba(99,102,241,0.18);
+  --active-bd:   #a5b4fc;
+  --accent:      #a5b4fc;
+  --accent-soft: rgba(165,180,252,0.14);
+  --danger:      #fca5a5;
+  --text:        #eef2ff;
+  --text2:       #c7d2fe;
+  --text3:       #6366f1;
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-md:   0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-lg:   0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+  --dot:         rgba(255,255,255,0.07);
+  --grid:        rgba(255,255,255,0.06);
 }
 
 /* ── Reset ── */
@@ -473,19 +473,51 @@ html, body {
 }
 
 /* ════════════════════════════════════
-   TEXT INPUT
+   INLINE TEXT EDITOR (WYSIWYG)
    ════════════════════════════════════ */
-.text-input {
-  position: fixed; z-index: 80;
-  min-width: 80px; min-height: 32px;
-  padding: 6px 10px;
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  outline: none; resize: both;
-  font-family: 'Inter', sans-serif; font-size: 16px;
-  background: var(--canvas); color: var(--text);
-  box-shadow: 0 4px 16px rgba(99,102,241,0.15);
+.text-inline-editor {
+  position: fixed; z-index: 200;
+  outline: none;
+  caret-color: var(--accent);
+  pointer-events: auto;
+  cursor: text;
 }
+.text-inline-editor:empty::before {
+  content: 'Text eingeben…';
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Floating text format toolbar */
+.text-format-toolbar {
+  display: flex; align-items: center; gap: 3px;
+  padding: 4px 6px;
+  background: var(--surface-a); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  animation: fadeUp .2s ease both;
+  pointer-events: auto;
+}
+.tft-select {
+  font-size: 12px; font-family: inherit;
+  padding: 2px 4px; border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  cursor: pointer; outline: none;
+}
+.tft-select:focus { border-color: var(--accent); }
+.tft-btn {
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 4px;
+  background: transparent; color: var(--text2);
+  font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: .12s;
+  font-family: 'Inter', serif;
+}
+.tft-btn:hover { background: var(--hover); color: var(--text); }
+.tft-btn.active { background: var(--accent-soft); color: var(--accent); }
+.tft-italic { font-style: italic; }
 
 /* ════════════════════════════════════
    COLLAB BAR
@@ -605,7 +637,7 @@ body.fullscreen:hover .ui-actions {
 @media print {
   .ui-brand, .ui-tools, .ui-props, .ui-actions,
   .ui-zoom, .ui-collab, .popup, .panel,
-  .toast, .sticky, .text-input, .remote-cursor {
+  .toast, .sticky, .text-inline-editor, .text-format-toolbar, .remote-cursor {
     display: none !important;
   }
   #whiteboard { position: static; width: 100%; height: auto; }
