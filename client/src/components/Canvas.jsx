@@ -1,7 +1,5 @@
-/* ═══════════════════════════════════════
-   Canvas — React Component (thin shell)
-   All logic lives in canvas/ sub-modules.
-   ═══════════════════════════════════════ */
+// Canvas - React Component (thin shell)
+// All logic lives in canvas/ sub-modules.
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { getState, setState, pushUndo, scheduleAutosave, useStore } from '../store';
@@ -17,10 +15,10 @@ export default function Canvas() {
   const blurTimerRef = useRef(null);
   const [textEdit, setTextEdit] = useState(null);
 
-  // Selected text stroke (for floating toolbar)
+  // Selected text stroke (for floating toolbar) - only when single text selected
   const selStroke = useStore(s => {
-    if (s.tool !== 'select' || s.selectedStrokeIdx == null) return null;
-    const st = s.layers[s.activeLayer]?.strokes?.[s.selectedStrokeIdx];
+    if (s.tool !== 'select' || s.selectedIdxs.length !== 1) return null;
+    const st = s.layers[s.activeLayer]?.strokes?.[s.selectedIdxs[0]];
     return (st?.type === 'text') ? st : null;
   });
   const view = useStore(s => s.view);
@@ -37,7 +35,7 @@ export default function Canvas() {
     window.__blankr_editingIdx = textEdit?.editIdx ?? null;
   }, [textEdit]);
 
-  /* ── Commit inline text ── */
+  /* Commit inline text */
   const commitText = useCallback((el) => {
     if (committedRef.current) return;
     committedRef.current = true;
@@ -52,14 +50,18 @@ export default function Canvas() {
       const layers = st.layers.map((l, i) => {
         if (i !== st.activeLayer) return l;
         const strokes = [...l.strokes];
-        if (text && text.trim()) {
+        if (te.isLabel) {
+          // Editing shape label
+          strokes[te.editIdx] = { ...strokes[te.editIdx], label: text.trim() || undefined };
+        } else if (text && text.trim()) {
           strokes[te.editIdx] = { ...strokes[te.editIdx], text: text.trim() };
         } else {
           strokes.splice(te.editIdx, 1);
         }
         return { ...l, strokes };
       });
-      setState({ layers, selectedStrokeIdx: (text && text.trim()) ? te.editIdx : null });
+      const newIdx = (text && text.trim()) || te.isLabel ? te.editIdx : null;
+      setState({ layers, selectedIdxs: newIdx != null ? [newIdx] : [] });
       scheduleAutosave();
     } else if (text && text.trim()) {
       pushUndo();
@@ -80,7 +82,7 @@ export default function Canvas() {
             }
           : l
       );
-      setState({ layers, tool: 'select', selectedStrokeIdx: newIdx });
+      setState({ layers, tool: 'select', selectedIdxs: [newIdx] });
       scheduleAutosave();
     }
     setTextEdit(null);
@@ -100,7 +102,6 @@ export default function Canvas() {
         const el = editorRef.current;
         if (!el) return;
         el.focus();
-        // Place cursor at end
         const range = document.createRange();
         range.selectNodeContents(el);
         range.collapse(false);
@@ -117,21 +118,22 @@ export default function Canvas() {
 
   useEffect(() => () => clearTimeout(blurTimerRef.current), []);
 
-  /* ── Floating toolbar helpers ── */
+  /* Floating toolbar helpers */
   function updateStroke(updates) {
     const st = getState();
-    if (st.selectedStrokeIdx == null) return;
+    if (st.selectedIdxs.length !== 1) return;
+    const idx = st.selectedIdxs[0];
     const layers = st.layers.map((l, li) => {
       if (li !== st.activeLayer) return l;
       const strokes = [...l.strokes];
-      strokes[st.selectedStrokeIdx] = { ...strokes[st.selectedStrokeIdx], ...updates };
+      strokes[idx] = { ...strokes[idx], ...updates };
       return { ...l, strokes };
     });
     setState({ layers });
     scheduleAutosave();
   }
 
-  /* ── Compute inline editor style ── */
+  /* Inline editor style */
   let editorStyle = null;
   if (textEdit) {
     const fs = textEdit.fontSize || getState().fontSize || 20;
@@ -163,19 +165,18 @@ export default function Canvas() {
       caretColor: 'var(--accent)',
       pointerEvents: 'auto',
       transformOrigin: 'top left',
+      textAlign: textEdit.isLabel ? 'center' : 'left',
     };
   }
 
-  /* ── Floating toolbar position ── */
+  /* Floating toolbar position */
   let toolbarStyle = null;
   if (selStroke && !textEdit) {
     const bb = getBBox(selStroke);
     if (bb) {
-      const sx = (bb.x + bb.w) * view.scale + view.x + 8;
-      const sy = (bb.y + bb.h) * view.scale + view.y + 8;
-      toolbarStyle = {
-        position: 'fixed', left: sx, top: sy, zIndex: 150,
-      };
+      const sx = (bb.x + bb.w + view.x) * view.scale + 8;
+      const sy = (bb.y + bb.h + view.y) * view.scale + 8;
+      toolbarStyle = { position: 'fixed', left: sx, top: sy, zIndex: 150 };
     }
   }
 
@@ -212,7 +213,7 @@ export default function Canvas() {
         </div>
       )}
 
-      {/* Floating text format toolbar near selected text */}
+      {/* Floating text format toolbar */}
       {toolbarStyle && (
         <div className="text-format-toolbar" style={toolbarStyle}
           onMouseDown={e => e.stopPropagation()}

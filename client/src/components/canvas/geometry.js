@@ -1,11 +1,7 @@
-/* ═══════════════════════════════════════
-   Canvas — Geometry Helpers
-   Pure functions, no side-effects.
-   ═══════════════════════════════════════ */
+// Canvas - Geometry Helpers (pure functions, no side-effects)
 
-/**
- * Shortest distance from point (px,py) to segment (x1,y1)→(x2,y2).
- */
+import { SNAP_THRESHOLD, GRID_SIZE } from './constants.js';
+
 export function distToSegment(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -15,19 +11,71 @@ export function distToSegment(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-/**
- * Rotate (px,py) around (cx,cy) by angle (radians).
- */
 export function rotatePoint(px, py, cx, cy, angle) {
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const dx = px - cx, dy = py - cy;
   return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
 }
 
-/**
- * Axis-aligned bounding box for any stroke type.
- * Returns {x, y, w, h} or null.
- */
+/** Vertices for polygon-based shapes */
+export function getShapeVertices(type, x1, y1, x2, y2) {
+  const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
+  const hw = (x2 - x1) / 2, hh = (y2 - y1) / 2;
+  switch (type) {
+    case 'triangle': return [
+      { x: cx, y: Math.min(y1, y2) },
+      { x: Math.max(x1, x2), y: Math.max(y1, y2) },
+      { x: Math.min(x1, x2), y: Math.max(y1, y2) },
+    ];
+    case 'diamond': return [
+      { x: cx, y: Math.min(y1, y2) },
+      { x: Math.max(x1, x2), y: cy },
+      { x: cx, y: Math.max(y1, y2) },
+      { x: Math.min(x1, x2), y: cy },
+    ];
+    case 'star': {
+      const pts = [];
+      for (let i = 0; i < 10; i++) {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * i) / 10;
+        const r = i % 2 === 0 ? 1 : 0.38;
+        pts.push({ x: cx + Math.abs(hw) * r * Math.cos(angle), y: cy + Math.abs(hh) * r * Math.sin(angle) });
+      }
+      return pts;
+    }
+    case 'hexagon': {
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * i) / 6;
+        pts.push({ x: cx + Math.abs(hw) * Math.cos(angle), y: cy + Math.abs(hh) * Math.sin(angle) });
+      }
+      return pts;
+    }
+    default: return [];
+  }
+}
+
+/** Ray-casting point-in-polygon test */
+export function pointInPolygon(px, py, vertices) {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].x, yi = vertices[i].y;
+    const xj = vertices[j].x, yj = vertices[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+/** Shortest distance from point to polygon edges */
+export function distToPolygon(px, py, vertices) {
+  let minD = Infinity;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const d = distToSegment(px, py, vertices[j].x, vertices[j].y, vertices[i].x, vertices[i].y);
+    if (d < minD) minD = d;
+  }
+  return minD;
+}
+
 export function getBBox(s) {
   switch (s.type) {
     case 'pen': case 'eraser': {
@@ -43,13 +91,13 @@ export function getBBox(s) {
     case 'line': case 'arrow': case 'connector': {
       const pad = (s.width || 3) / 2 + 6;
       return {
-        x: Math.min(s.x1, s.x2) - pad,
-        y: Math.min(s.y1, s.y2) - pad,
-        w: Math.abs(s.x2 - s.x1) + pad * 2,
-        h: Math.abs(s.y2 - s.y1) + pad * 2,
+        x: Math.min(s.x1, s.x2) - pad, y: Math.min(s.y1, s.y2) - pad,
+        w: Math.abs(s.x2 - s.x1) + pad * 2, h: Math.abs(s.y2 - s.y1) + pad * 2,
       };
     }
-    case 'rect': case 'circle': {
+    case 'rect': case 'circle':
+    case 'triangle': case 'diamond': case 'star': case 'hexagon':
+    case 'frame': {
       const x = Math.min(s.x1, s.x2), y = Math.min(s.y1, s.y2);
       return { x: x - 4, y: y - 4, w: Math.abs(s.x2 - s.x1) + 8, h: Math.abs(s.y2 - s.y1) + 8 };
     }
@@ -66,18 +114,12 @@ export function getBBox(s) {
   }
 }
 
-/**
- * Center of a stroke's bounding box.
- */
 export function getCenter(s) {
   const bb = getBBox(s);
   if (!bb) return { cx: 0, cy: 0 };
   return { cx: bb.x + bb.w / 2, cy: bb.y + bb.h / 2 };
 }
 
-/**
- * Four anchor points (top/right/bottom/left) for connector snapping.
- */
 export function getConnectorAnchors(s) {
   const bb = getBBox(s);
   if (!bb) return [];
@@ -90,15 +132,13 @@ export function getConnectorAnchors(s) {
   ];
 }
 
-/**
- * Move a stroke by (dx, dy). Returns a new stroke object.
- */
 export function moveStroke(s, dx, dy) {
   const m = { ...s };
   switch (s.type) {
     case 'pen': case 'eraser':
       m.points = s.points.map(p => ({ x: p.x + dx, y: p.y + dy })); break;
     case 'line': case 'arrow': case 'rect': case 'circle': case 'connector':
+    case 'triangle': case 'diamond': case 'star': case 'hexagon': case 'frame':
       m.x1 = s.x1 + dx; m.y1 = s.y1 + dy;
       m.x2 = s.x2 + dx; m.y2 = s.y2 + dy; break;
     case 'text': case 'image':
@@ -107,10 +147,6 @@ export function moveStroke(s, dx, dy) {
   return m;
 }
 
-/**
- * Scale/resize a stroke from a bounding-box corner handle.
- * handle is one of: 'tl','tr','bl','br'.
- */
 export function resizeStroke(s, handle, dx, dy, origBB) {
   const m = { ...s };
   let sx = 1, sy = 1, ox = origBB.x, oy = origBB.y;
@@ -123,14 +159,13 @@ export function resizeStroke(s, handle, dx, dy, origBB) {
   if (Math.abs(sx) < 0.05) sx = 0.05;
   if (Math.abs(sy) < 0.05) sy = 0.05;
 
-  function scaleP(px, py) {
-    return { x: ox + (px - ox) * sx, y: oy + (py - oy) * sy };
-  }
+  function scaleP(px, py) { return { x: ox + (px - ox) * sx, y: oy + (py - oy) * sy }; }
 
   switch (s.type) {
     case 'pen': case 'eraser':
       m.points = s.points.map(p => scaleP(p.x, p.y)); break;
-    case 'rect': case 'circle': {
+    case 'rect': case 'circle':
+    case 'triangle': case 'diamond': case 'star': case 'hexagon': case 'frame': {
       const p1 = scaleP(s.x1, s.y1), p2 = scaleP(s.x2, s.y2);
       m.x1 = p1.x; m.y1 = p1.y; m.x2 = p2.x; m.y2 = p2.y; break;
     }
@@ -151,10 +186,6 @@ export function resizeStroke(s, handle, dx, dy, origBB) {
   return m;
 }
 
-/**
- * Move a single endpoint of a line-like stroke.
- * endpoint is 'p1' or 'p2'. Returns a new stroke.
- */
 export function moveEndpoint(s, endpoint, wx, wy) {
   const m = { ...s };
   if (endpoint === 'p1') { m.x1 = wx; m.y1 = wy; }
@@ -162,9 +193,64 @@ export function moveEndpoint(s, endpoint, wx, wy) {
   return m;
 }
 
-/**
- * Is a stroke type "line-like"? (has x1,y1,x2,y2 and uses endpoint handles)
- */
 export function isLineLike(type) {
   return type === 'line' || type === 'arrow' || type === 'connector';
+}
+
+export function isPolygonShape(type) {
+  return type === 'triangle' || type === 'diamond' || type === 'star' || type === 'hexagon';
+}
+
+/** Snap a coordinate to grid */
+export function snapToGrid(val, gridSnap) {
+  if (!gridSnap) return val;
+  return Math.round(val / GRID_SIZE) * GRID_SIZE;
+}
+
+/**
+ * Compute alignment guide lines when dragging.
+ * Returns { guides: [{axis,pos}], snapDx, snapDy }
+ */
+export function computeAlignGuides(movingBBs, allStrokes, movingSet, threshold) {
+  const guides = [];
+  let snapDx = 0, snapDy = 0;
+  if (!movingBBs.length) return { guides, snapDx, snapDy };
+
+  let mx1 = Infinity, my1 = Infinity, mx2 = -Infinity, my2 = -Infinity;
+  for (const bb of movingBBs) {
+    if (bb.x < mx1) mx1 = bb.x;
+    if (bb.y < my1) my1 = bb.y;
+    if (bb.x + bb.w > mx2) mx2 = bb.x + bb.w;
+    if (bb.y + bb.h > my2) my2 = bb.y + bb.h;
+  }
+  const mcx = (mx1 + mx2) / 2, mcy = (my1 + my2) / 2;
+  let bestDx = Infinity, bestDy = Infinity;
+
+  for (let i = 0; i < allStrokes.length; i++) {
+    if (movingSet.has(i)) continue;
+    const bb = getBBox(allStrokes[i]);
+    if (!bb) continue;
+    const ocx = bb.x + bb.w / 2, ocy = bb.y + bb.h / 2;
+
+    for (const [mv, ov] of [[mx1, bb.x], [mx2, bb.x + bb.w], [mcx, ocx]]) {
+      const d = ov - mv;
+      if (Math.abs(d) < threshold && Math.abs(d) < Math.abs(bestDx)) bestDx = d;
+    }
+    for (const [mv, ov] of [[my1, bb.y], [my2, bb.y + bb.h], [mcy, ocy]]) {
+      const d = ov - mv;
+      if (Math.abs(d) < threshold && Math.abs(d) < Math.abs(bestDy)) bestDy = d;
+    }
+  }
+
+  if (Math.abs(bestDx) < threshold) {
+    snapDx = bestDx;
+    const snapVal = mcx + bestDx;
+    guides.push({ axis: 'x', pos: snapVal });
+  }
+  if (Math.abs(bestDy) < threshold) {
+    snapDy = bestDy;
+    const snapVal = mcy + bestDy;
+    guides.push({ axis: 'y', pos: snapVal });
+  }
+  return { guides, snapDx, snapDy };
 }
