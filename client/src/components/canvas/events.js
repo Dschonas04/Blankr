@@ -1,6 +1,6 @@
 // Canvas - Event Handlers & Render Loop
 
-import { getState, setState, subscribe } from '../../store.js';
+import { beginGesture, endGesture, getState, setState, subscribe } from '../../store.js';
 import {
   LASER_FADE_MS, HANDLE_SIZE, CONNECTOR_SNAP_DIST,
   ENDPOINT_HIT_RADIUS, SNAP_THRESHOLD, NUDGE_STEP, NUDGE_STEP_LARGE, GRID_SIZE
@@ -14,6 +14,7 @@ import {
   resizeStroke, moveEndpoint, isLineLike, snapToGrid, computeAlignGuides
 } from './geometry.js';
 import { hitTest, hitHandle, handleCursor } from './hitTest.js';
+import { createKeyboardHandlers } from './keyboard.js';
 import { sendStroke, sendCursor, sendClear, sendUndo } from '../../collab.js';
 
 export function setupCanvasEvents(canvas, setTextEdit) {
@@ -177,6 +178,9 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   // ================= POINTER DOWN =================
   function onDown(e) {
     if (e.preventDefault) e.preventDefault();
+    // Klammert die Geste: der Store legt daraufhin genau einen
+    // Rueckgaengig-Punkt an, sobald sich wirklich etwas aendert.
+    beginGesture();
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
@@ -723,265 +727,16 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   }
 
   // ================= KEYBOARD =================
-  function onKeyDown(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-    const st = getState();
-    const strokes = getStrokes();
-    const meta = e.metaKey || e.ctrlKey;
+  const { onKeyDown, onKeyUp, onPaste } = createKeyboardHandlers({
+    canvas,
+    dpr,
+    requestRender: () => { needsRender = true; },
+    isSpaceDown: () => spaceDown,
+    setSpaceDown: (v) => { spaceDown = v; },
+    getStrokes,
+    autosave,
+  });
 
-    // Space pan
-    if (e.code === 'Space' && !spaceDown) {
-      spaceDown = true;
-      canvas.style.cursor = 'grab';
-      e.preventDefault();
-      return;
-    }
-
-    // Delete
-    if ((e.key === 'Delete' || e.key === 'Backspace') && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const toDelete = new Set(st.selectedIdxs);
-      const newStrokes = strokes.filter((_, i) => !toDelete.has(i));
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ layers, selectedIdxs: [] });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Ctrl+A select all
-    if (meta && e.key === 'a') {
-      e.preventDefault();
-      setState({ selectedIdxs: strokes.map((_, i) => i) });
-      needsRender = true;
-      return;
-    }
-
-    // Ctrl+C copy
-    if (meta && e.key === 'c' && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const copied = st.selectedIdxs.map(i => JSON.parse(JSON.stringify(strokes[i]))).filter(Boolean);
-      setState({ clipboard: copied });
-      return;
-    }
-
-    // Ctrl+X cut
-    if (meta && e.key === 'x' && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const copied = st.selectedIdxs.map(i => JSON.parse(JSON.stringify(strokes[i]))).filter(Boolean);
-      const toDelete = new Set(st.selectedIdxs);
-      const newStrokes = strokes.filter((_, i) => !toDelete.has(i));
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ clipboard: copied, layers, selectedIdxs: [] });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Ctrl+V paste
-    if (meta && e.key === 'v') {
-      e.preventDefault();
-      // Try clipboard image first
-      if (navigator.clipboard && navigator.clipboard.read) {
-        navigator.clipboard.read().then(items => {
-          for (const item of items) {
-            for (const type of item.types) {
-              if (type.startsWith('image/')) {
-                item.getType(type).then(blob => pasteImageBlob(blob));
-                return;
-              }
-            }
-          }
-          pasteFromInternal();
-        }).catch(() => pasteFromInternal());
-      } else {
-        pasteFromInternal();
-      }
-      return;
-    }
-
-    // Ctrl+D duplicate
-    if (meta && e.key === 'd' && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const duped = st.selectedIdxs.map(i => {
-        const s = JSON.parse(JSON.stringify(strokes[i]));
-        return moveStroke(s, 20, 20);
-      }).filter(Boolean);
-      const newStrokes = [...strokes, ...duped];
-      const newIdxs = duped.map((_, i) => strokes.length + i);
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ layers, selectedIdxs: newIdxs });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Ctrl+G group
-    if (meta && e.key === 'g' && !e.shiftKey && st.selectedIdxs.length > 1) {
-      e.preventDefault();
-      const gid = 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      const newStrokes = [...strokes];
-      for (const idx of st.selectedIdxs) {
-        if (newStrokes[idx]) newStrokes[idx] = { ...newStrokes[idx], groupId: gid };
-      }
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ layers });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Ctrl+Shift+G ungroup
-    if (meta && e.key === 'G' && e.shiftKey && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const newStrokes = [...strokes];
-      for (const idx of st.selectedIdxs) {
-        if (newStrokes[idx]) {
-          const s = { ...newStrokes[idx] };
-          delete s.groupId;
-          newStrokes[idx] = s;
-        }
-      }
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ layers });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Z-order: Ctrl+] bring forward, Ctrl+[ send backward
-    // Ctrl+Shift+] bring to front, Ctrl+Shift+[ send to back
-    if (meta && (e.key === ']' || e.key === '[') && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const sel = new Set(st.selectedIdxs);
-      const selected = st.selectedIdxs.map(i => strokes[i]).filter(Boolean);
-      const rest = strokes.filter((_, i) => !sel.has(i));
-      let result;
-
-      if (e.key === ']' && e.shiftKey) {
-        result = [...rest, ...selected]; // front
-      } else if (e.key === '[' && e.shiftKey) {
-        result = [...selected, ...rest]; // back
-      } else if (e.key === ']') {
-        result = [...strokes];
-        const sorted = [...st.selectedIdxs].sort((a, b) => b - a);
-        for (const idx of sorted) {
-          if (idx < result.length - 1 && !sel.has(idx + 1)) {
-            [result[idx], result[idx + 1]] = [result[idx + 1], result[idx]];
-          }
-        }
-      } else {
-        result = [...strokes];
-        const sorted = [...st.selectedIdxs].sort((a, b) => a - b);
-        for (const idx of sorted) {
-          if (idx > 0 && !sel.has(idx - 1)) {
-            [result[idx], result[idx - 1]] = [result[idx - 1], result[idx]];
-          }
-        }
-      }
-
-      const newIdxs = [];
-      for (let i = 0; i < result.length; i++) {
-        if (selected.includes(result[i])) newIdxs.push(i);
-      }
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: result };
-      setState({ layers, selectedIdxs: newIdxs });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Arrow keys nudge
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && st.selectedIdxs.length > 0) {
-      e.preventDefault();
-      const step = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
-      let dx = 0, dy = 0;
-      if (e.key === 'ArrowUp') dy = -step;
-      if (e.key === 'ArrowDown') dy = step;
-      if (e.key === 'ArrowLeft') dx = -step;
-      if (e.key === 'ArrowRight') dx = step;
-      const newStrokes = [...strokes];
-      for (const idx of st.selectedIdxs) {
-        if (newStrokes[idx]) newStrokes[idx] = moveStroke(newStrokes[idx], dx, dy);
-      }
-      const layers = [...st.layers];
-      layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-      setState({ layers });
-      autosave(); needsRender = true;
-      return;
-    }
-
-    // Escape
-    if (e.key === 'Escape') {
-      setState({ selectedIdxs: [], contextMenu: null });
-      needsRender = true;
-      return;
-    }
-  }
-
-  function onKeyUp(e) {
-    if (e.code === 'Space') {
-      spaceDown = false;
-      canvas.style.cursor = getState().tool === 'hand' ? 'grab' : 'default';
-    }
-  }
-
-  // ---- paste helpers ----
-  function pasteFromInternal() {
-    const st = getState();
-    const clip = st.clipboard;
-    if (!clip || !clip.length) return;
-    const strokes = getStrokes();
-    const pasted = clip.map(s => moveStroke(JSON.parse(JSON.stringify(s)), 20, 20));
-    const newStrokes = [...strokes, ...pasted];
-    const newIdxs = pasted.map((_, i) => strokes.length + i);
-    const layers = [...st.layers];
-    layers[st.activeLayer] = { ...layers[st.activeLayer], strokes: newStrokes };
-    setState({ layers, selectedIdxs: newIdxs, clipboard: pasted });
-    autosave(); needsRender = true;
-  }
-
-  function pasteImageBlob(blob) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const v = getState().view;
-        const cx = W / 2 / dpr / v.scale - v.x;
-        const cy = H / 2 / dpr / v.scale - v.y;
-        const st2 = getState();
-        const strokes2 = st2.layers[st2.activeLayer]?.strokes || [];
-        const newStroke = {
-          type: 'image',
-          x: cx - img.width / 2, y: cy - img.height / 2,
-          w: img.width, h: img.height,
-          src: reader.result, _img: img
-        };
-        const layers = [...st2.layers];
-        layers[st2.activeLayer] = { ...layers[st2.activeLayer], strokes: [...strokes2, newStroke] };
-        setState({ layers, selectedIdxs: [strokes2.length] });
-        autosave(); needsRender = true;
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(blob);
-  }
-
-  // ---- clipboard paste event (for drag/drop paste) ----
-  function onPaste(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        pasteImageBlob(item.getAsFile());
-        return;
-      }
-    }
-  }
-
-  // ---- touch ----
   function onTouchStart(e) {
     if (e.touches.length === 2) {
       e.preventDefault();
@@ -1024,7 +779,7 @@ export function setupCanvasEvents(canvas, setTextEdit) {
 
   function onTouchEnd(e) {
     if (pinchActive) { pinchActive = false; return; }
-    onUp({ preventDefault() {} });
+    onUpOuter({ preventDefault() {} });
   }
 
   function onContextMenu(e) { e.preventDefault(); }
@@ -1047,8 +802,19 @@ export function setupCanvasEvents(canvas, setTextEdit) {
 
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
-  canvas.addEventListener('pointerup', onUp);
-  canvas.addEventListener('pointerleave', onUp);
+  // Die Geste endet erst, nachdem onUp gelaufen ist: ein Stift-Strich landet
+  // ganz am Ende von onUp in der Ebene, und genau diese Aenderung soll noch
+  // in den Rueckgaengig-Punkt der Geste fallen.
+  function onUpOuter(e) {
+    try {
+      onUp(e);
+    } finally {
+      endGesture();
+    }
+  }
+
+  canvas.addEventListener('pointerup', onUpOuter);
+  canvas.addEventListener('pointerleave', onUpOuter);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', onContextMenu);
@@ -1097,8 +863,8 @@ export function setupCanvasEvents(canvas, setTextEdit) {
   return () => {
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointermove', onMove);
-    canvas.removeEventListener('pointerup', onUp);
-    canvas.removeEventListener('pointerleave', onUp);
+    canvas.removeEventListener('pointerup', onUpOuter);
+    canvas.removeEventListener('pointerleave', onUpOuter);
     canvas.removeEventListener('dblclick', onDblClick);
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('contextmenu', onContextMenu);

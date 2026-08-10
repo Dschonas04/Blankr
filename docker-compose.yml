@@ -2,18 +2,20 @@ services:
   blankr:
     build: .
     container_name: blankr-whiteboard
+    restart: unless-stopped
     ports:
       - "8080:8080"
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-        window: 60s
+    environment:
+      BLANKR_DATA: /data
+    volumes:
+      # Ohne dieses Volume waeren alle Boards nach einem Neuaufbau weg.
+      - blankr-data:/data
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  blankr-data:

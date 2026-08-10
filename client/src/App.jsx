@@ -12,6 +12,7 @@ import Toast from './components/Toast';
 import CollabBar from './components/CollabBar';
 import ContextMenu from './components/ContextMenu';
 import ChatPanel from './components/ChatPanel';
+import BoardPicker from './components/BoardPicker';
 
 export default function App() {
   const darkMode = useStore(s => s.darkMode);
@@ -27,11 +28,12 @@ export default function App() {
     document.body.classList.toggle('fullscreen', fullscreen);
   }, [fullscreen]);
 
-  /* Load saved state + check URL for collab room */
+  /* Lokalen Stand laden; zeigt die URL auf ein Board, gewinnt das Board */
   useEffect(() => {
-    loadSaved();
-    const room = new URLSearchParams(location.search).get('room');
-    if (room) connect(room);
+    const params = new URLSearchParams(location.search);
+    const board = params.get('board') || params.get('room');
+    if (board) connect(board);
+    else loadSaved();
   }, []);
 
   /* Global keyboard shortcuts */
@@ -98,6 +100,7 @@ export default function App() {
       <Toast />
       <ContextMenu />
       <ChatPanel />
+      <BoardPicker />
     </>
   );
 }

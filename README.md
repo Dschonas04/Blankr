@@ -2,6 +2,8 @@
 
 Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und Express mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
 
+Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bearbeiten wird über einen CRDT zusammengeführt, nicht über ein einfaches Weiterreichen von Ereignissen — auch nach einem Verbindungsabbruch sehen alle Beteiligten wieder denselben Stand.
+
 ## Features
 
 ### Zeichenwerkzeuge
@@ -42,7 +44,7 @@ Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt R
 ### Organisation
 - **Layer-System** – Ebenen-Panel zur Organisation von Zeichnungen mit Sichtbarkeit und Deckkraft
 - **Sticky Notes** – Farbige Haftnotizen direkt auf dem Whiteboard
-- **Undo / Redo** – Unbegrenzte Rückgängig-History (bis zu 50 Schritte)
+- **Undo / Redo** – bis zu 50 Schritte, auch für gezeichnete Striche
 
 ### Import & Export
 - **PNG** – Pixel-Export mit korrektem Hintergrund
@@ -52,12 +54,14 @@ Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt R
 - **Bild einfügen** – `Ctrl+V` zum Einfügen von Bildern aus der Zwischenablage
 - **Drucken / PDF** – Über den Browser-Druckdialog
 
-### Echtzeit-Kollaboration
-- **WebSocket-Sync** – Strokes, Cursor-Positionen und Clear-Events live synchronisiert
-- **Raum-System** – Beitritt über URL-Parameter `?room=<id>`
-- **Nutzerfarben** – Jeder Teilnehmer erhält automatisch eine eigene Farbe
-- **Remote-Cursor mit Namen** – Cursor anderer Teilnehmer werden mit Name in Echtzeit angezeigt
-- **Chat** – Integrierter Chat-Sidebar für Textnachrichten
+### Boards und Zusammenarbeit
+- **Benannte Boards** – anlegen, umbenennen, löschen; die Liste zeigt, wer gerade online ist
+- **Serverseitige Persistenz** – jedes Board liegt als JSON-Datei auf der Platte und ist nach einem Neustart wieder da
+- **CRDT-Zusammenführung** – gleichzeitiges Zeichnen, Verschieben und Löschen läuft zusammen, statt sich zu überschreiben
+- **Automatisches Wiederverbinden** – nach einem Aussetzer wird der vollständige Stand neu abgeglichen
+- **Rückgängig ohne Kollateralschaden** – Strg+Z nimmt nur die eigenen Änderungen zurück, nicht die der anderen
+- **Beitritt über Link** – `?board=<id>`, alte `?room=`-Links funktionieren weiter
+- **Nutzerfarben, Remote-Cursor und Chat** – wie gehabt
 
 ### Weitere Features
 - **Dark Mode** – Umschalten zwischen hellem und dunklem Design mit automatischer Farbanpassung (dunkle Strokes werden im Dark Mode invertiert)
@@ -126,9 +130,11 @@ docker compose down
 
 ### Tech-Stack
 - **Frontend** – React 19, Vite 6, HTML5 Canvas 2D
-- **Backend** – Express 4, ws 8 (WebSockets)
-- **Runtime** – Node.js 20 (Alpine), Docker
+- **Backend** – Express 4, ws 8 (WebSockets), ESM
+- **Runtime** – Node.js 22 (Alpine), Docker
 - **State** – Custom Store mit `useSyncExternalStore` (kein Redux/Zustand)
+- **Synchronisation** – LWW-Element-Set in `shared/`, wortgleich von Client und Server benutzt
+- **Ablage** – JSON-Dateien, atomar geschrieben (keine Datenbank)
 
 ### Canvas-Modul
 Die Canvas-Logik ist in eigenständige Module aufgeteilt:
@@ -145,12 +151,15 @@ Die Canvas-Logik ist in eigenständige Module aufgeteilt:
 
 ```
 Blankr/
+├── shared/
+│   └── lww.mjs               # CRDT-Kern, von Client UND Server benutzt
 ├── client/
 │   ├── src/
 │   │   ├── App.jsx           # Haupt-Komponente + Keyboard Shortcuts
 │   │   ├── App.css           # Styles (inkl. Dark Mode Tokens)
-│   │   ├── store.js          # State-Management (useSyncExternalStore)
-│   │   ├── collab.js         # WebSocket-Kollaboration
+│   │   ├── store.js          # State, Undo/Redo, Abgleich mit dem CRDT
+│   │   ├── collab.js         # WebSocket-Transport + Board-API
+│   │   ├── sync/project.js   # Ebenen <-> CRDT-Dokument
 │   │   ├── main.jsx          # Entry Point
 │   │   └── components/
 │   │       ├── Canvas.jsx    # React-Shell (WYSIWYG-Editor + Toolbar)
@@ -159,8 +168,10 @@ Blankr/
 │   │       │   ├── geometry.js
 │   │       │   ├── hitTest.js
 │   │       │   ├── render.js
-│   │       │   ├── events.js
+│   │       │   ├── keyboard.js   # Tastatur + Zwischenablage
+│   │       │   ├── events.js     # Zeiger + Render-Schleife
 │   │       │   └── index.js
+│   │       ├── BoardPicker.jsx   # Board-Verwaltung
 │   │       ├── Toolbar.jsx
 │   │       ├── PropertiesBar.jsx
 │   │       ├── ActionBar.jsx
@@ -175,23 +186,76 @@ Blankr/
 │   ├── vite.config.js
 │   └── package.json
 ├── server/
-│   ├── index.js              # Express + WebSocket Server
+│   ├── index.js              # Express, REST-API und WebSocket
+│   ├── boards.js             # Board-Ablage auf der Platte
 │   └── package.json
 ├── tests/
-│   └── app.test.js
-├── Dockerfile                # Multi-Stage Build (node:20-alpine)
+│   ├── crdt.test.mjs         # Zusammenführung, Abgleich, Projektion
+│   └── boards.test.mjs       # Ablage gegen ein echtes Verzeichnis
+├── Dockerfile                # Multi-Stage Build (node:22-alpine)
 ├── docker-compose.yml        # Container-Orchestrierung
 └── README.md
 ```
 
-## Hochverfügbarkeit (HA)
+### Wie die Synchronisation funktioniert
 
-Die `docker-compose.yml` unterstützt:
+Jedes Objekt trägt eine stabile ID, eine Lamport-Uhr und die ID seines letzten
+Schreibers. Beim Zusammenführen gewinnt die höhere Uhr, bei Gleichstand die
+größere Site-ID. Diese Regel ist kommutativ, assoziativ und idempotent —
+Operationen dürfen also in beliebiger Reihenfolge, mehrfach oder verspätet
+eintreffen und ergeben trotzdem überall denselben Zustand. Gelöschtes
+hinterlässt einen Grabstein, damit eine verspätete Änderung nichts wiederbelebt.
 
-- **Health-Checks** – Server wird regelmäßig auf Erreichbarkeit geprüft
-- **Restart-Policy** – Container wird bei Ausfall automatisch neu gestartet
-- **Replicas** – Mehrere Instanzen können über `deploy.replicas` konfiguriert werden
+Der Editor arbeitet intern weiterhin mit Array-Indizes; die Übersetzung nach
+außen passiert an genau einer Stelle in `store.setState`. Jede Änderung an den
+Ebenen wird dort mit dem Dokument abgeglichen und als Operationsfolge
+verschickt — keine der rund zwanzig Schreibstellen im Editor kann den Abgleich
+umgehen.
+
+Der Server hält dasselbe Dokument, wendet eingehende Operationen an und gibt
+nur weiter, was seinen Zustand tatsächlich verändert. Beim Beitritt und nach
+jedem Wiederverbinden bekommt ein Client den vollständigen Schnappschuss.
+
+### Tests
+
+```bash
+node --test "tests/**/*.test.mjs"
+```
+
+Geprüft wird der Code aus `shared/`, `client/src/sync/` und `server/boards.js`
+direkt — inklusive Konvergenz zweier Clients, Idempotenz, Grabsteinen und der
+Frage, ob eine präparierte Board-ID aus dem Datenverzeichnis herausführen kann.
+
+## Betrieb
+
+- **Health-Check** – `/healthz` meldet Anzahl der Boards und offenen Sitzungen
+- **Restart-Policy** – der Container startet nach einem Ausfall selbst neu
+- **Datenvolume** – Boards liegen unter `/data` (`BLANKR_DATA`); ohne eingebundenes
+  Volume sind sie beim nächsten Image-Build weg
+- **Geordnetes Beenden** – bei `SIGTERM` werden offene Boards noch geschrieben
+
+**Nur eine Instanz.** Der Board-Zustand liegt im Speicher des jeweiligen
+Prozesses. Zwei Repliken hinter einem Load Balancer würden zwei getrennte
+Wahrheiten führen — dafür bräuchte es einen gemeinsamen Nachrichtenbus.
+
+## Grenzen
+
+- **Kein Zugriffsschutz.** Wer die URL kennt, kann jedes Board öffnen und ändern.
+  Für den Betrieb im Internet gehört eine Authentifizierung davor.
+- **Text wird als Ganzes zusammengeführt.** Ändern zwei Leute gleichzeitig
+  denselben Textblock, gewinnt der spätere Schreiber — es wird nicht
+  zeichenweise gemischt.
+- **Sticky Notes und Chat werden nicht synchronisiert.** Beide bleiben lokal
+  bzw. flüchtig.
 
 ## Lizenz
 
-Dieses Projekt ist ein internes Werkzeug und steht unter keiner öffentlichen Lizenz.
+Business Source License 1.1 — siehe [LICENSE](LICENSE).
+
+Kurz gefasst: lesen, ändern, selbst betreiben und beitragen ist erlaubt,
+einschließlich Nutzung in der eigenen Organisation. Nicht erlaubt ist es, Blankr
+als kommerzielles Angebot für Dritte zu betreiben oder zu verkaufen. Am
+**10. August 2030** geht diese Version automatisch in die **Apache-2.0**-Lizenz über.
+
+BSL ist quelloffen, aber keine von der OSI anerkannte Open-Source-Lizenz —
+GitHub weist sie deshalb als „Other" aus.
