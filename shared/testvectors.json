@@ -1,0 +1,101 @@
+{
+  "_kommentar": [
+    "Gemeinsame Testvektoren fuer die beiden Implementierungen der",
+    "Zusammenfuehrung: shared/lww.mjs (JavaScript) und server/lww.go (Go).",
+    "",
+    "Beide Seiten muessen jeden Fall bestehen -- und zwar dreifach: in der",
+    "angegebenen Reihenfolge, in umgekehrter Reihenfolge und mit doppelt",
+    "zugestellten Operationen. Damit ist geprueft, dass die Regel",
+    "kommutativ und idempotent ist und dass beide Sprachen dasselbe rechnen.",
+    "",
+    "Aendert jemand die Konfliktregel in einer der beiden Dateien, ohne die",
+    "andere anzupassen, faellt hier ein Test um."
+  ],
+  "cases": [
+    {
+      "name": "hoehere Uhr gewinnt",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 1, "site": "a" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 2 }, "clock": 5, "site": "b" }
+      ],
+      "expect": [{ "id": "x", "clock": 5, "site": "b", "data": { "v": 2 } }]
+    },
+    {
+      "name": "bei gleicher Uhr entscheidet die groessere Site-ID",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": "a" }, "clock": 3, "site": "aaa" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": "b" }, "clock": 3, "site": "bbb" }
+      ],
+      "expect": [{ "id": "x", "clock": 3, "site": "bbb", "data": { "v": "b" } }]
+    },
+    {
+      "name": "Loeschen setzt einen Grabstein",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 1, "site": "a" },
+        { "t": "del", "id": "x", "kind": "stroke", "clock": 2, "site": "a" }
+      ],
+      "expect": []
+    },
+    {
+      "name": "verspaetete Aenderung belebt Geloeschtes nicht wieder",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 10, "site": "a" },
+        { "t": "del", "id": "x", "kind": "stroke", "clock": 20, "site": "b" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 2 }, "clock": 15, "site": "a" }
+      ],
+      "expect": []
+    },
+    {
+      "name": "spaeteres Wiederanlegen nach dem Loeschen gilt",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 1, "site": "a" },
+        { "t": "del", "id": "x", "kind": "stroke", "clock": 2, "site": "a" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 3 }, "clock": 9, "site": "a" }
+      ],
+      "expect": [{ "id": "x", "clock": 9, "site": "a", "data": { "v": 3 } }]
+    },
+    {
+      "name": "zwei Clients zeichnen gleichzeitig",
+      "ops": [
+        { "t": "set", "id": "l1", "kind": "layer", "data": { "name": "Ebene 1", "order": 0 }, "clock": 1, "site": "aaa" },
+        { "t": "set", "id": "sA", "kind": "stroke", "data": { "type": "pen", "order": 0 }, "clock": 2, "site": "aaa" },
+        { "t": "set", "id": "sB", "kind": "stroke", "data": { "type": "rect", "order": 0 }, "clock": 2, "site": "bbb" }
+      ],
+      "expect": [
+        { "id": "l1", "clock": 1, "site": "aaa", "data": { "name": "Ebene 1", "order": 0 } },
+        { "id": "sA", "clock": 2, "site": "aaa", "data": { "type": "pen", "order": 0 } },
+        { "id": "sB", "clock": 2, "site": "bbb", "data": { "type": "rect", "order": 0 } }
+      ]
+    },
+    {
+      "name": "Uhr gewinnt vor Site-ID",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": "klein" }, "clock": 9, "site": "aaa" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": "gross" }, "clock": 8, "site": "zzz" }
+      ],
+      "expect": [{ "id": "x", "clock": 9, "site": "aaa", "data": { "v": "klein" } }]
+    },
+    {
+      "name": "identische Operation zweimal aendert nichts",
+      "ops": [
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 4, "site": "a" },
+        { "t": "set", "id": "x", "kind": "stroke", "data": { "v": 1 }, "clock": 4, "site": "a" }
+      ],
+      "expect": [{ "id": "x", "clock": 4, "site": "a", "data": { "v": 1 } }]
+    },
+    {
+      "name": "mehrere Objekte, gemischte Operationen",
+      "ops": [
+        { "t": "set", "id": "a", "kind": "stroke", "data": { "n": 1 }, "clock": 1, "site": "s1" },
+        { "t": "set", "id": "b", "kind": "stroke", "data": { "n": 2 }, "clock": 2, "site": "s2" },
+        { "t": "del", "id": "a", "kind": "stroke", "clock": 3, "site": "s2" },
+        { "t": "set", "id": "b", "kind": "stroke", "data": { "n": 3 }, "clock": 4, "site": "s1" },
+        { "t": "set", "id": "c", "kind": "layer", "data": { "name": "Ebene 2", "order": 1 }, "clock": 5, "site": "s1" }
+      ],
+      "expect": [
+        { "id": "b", "clock": 4, "site": "s1", "data": { "n": 3 } },
+        { "id": "c", "clock": 5, "site": "s1", "data": { "name": "Ebene 2", "order": 1 } }
+      ]
+    }
+  ]
+}

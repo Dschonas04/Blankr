@@ -1,6 +1,6 @@
 # Blankr – Whiteboard
 
-Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und Express mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
+Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und einen Go-Server mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
 
 Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bearbeiten wird über einen CRDT zusammengeführt, nicht über ein einfaches Weiterreichen von Ereignissen — auch nach einem Verbindungsabbruch sehen alle Beteiligten wieder denselben Stand.
 
@@ -75,6 +75,7 @@ Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bear
 ### Voraussetzungen
 
 - [Docker](https://www.docker.com/) und [Docker Compose](https://docs.docker.com/compose/)
+- Für die Entwicklung ohne Container: Node.js 22 und Go 1.25
 
 ### Mit Docker starten
 
@@ -83,6 +84,16 @@ docker compose up -d --build
 ```
 
 Die Anwendung ist dann unter [http://localhost:8080](http://localhost:8080) erreichbar.
+
+### Ohne Container
+
+```bash
+cd client && npm ci && npm run build && cd ..
+cd server && go run .          # bedient :8080 samt Frontend aus client/dist
+```
+
+Für die Frontend-Entwicklung mit Neuladen zusätzlich `cd client && npm run dev`
+— der Vite-Server auf :5173 reicht `/api` und `/ws` an den Go-Server weiter.
 
 ### Stoppen
 
@@ -130,10 +141,11 @@ docker compose down
 
 ### Tech-Stack
 - **Frontend** – React 19, Vite 6, HTML5 Canvas 2D
-- **Backend** – Express 4, ws 8 (WebSockets), ESM
-- **Runtime** – Node.js 22 (Alpine), Docker
+- **Backend** – Go 1.25, `gorilla/websocket`, sonst nur Standardbibliothek
+- **Runtime** – statisch gelinkte Binärdatei in Alpine, Docker
 - **State** – Custom Store mit `useSyncExternalStore` (kein Redux/Zustand)
-- **Synchronisation** – LWW-Element-Set in `shared/`, wortgleich von Client und Server benutzt
+- **Synchronisation** – LWW-Element-Set, zweimal implementiert (JS und Go),
+  abgesichert über gemeinsame Testvektoren
 - **Ablage** – JSON-Dateien, atomar geschrieben (keine Datenbank)
 
 ### Canvas-Modul
@@ -152,7 +164,8 @@ Die Canvas-Logik ist in eigenständige Module aufgeteilt:
 ```
 Blankr/
 ├── shared/
-│   └── lww.mjs               # CRDT-Kern, von Client UND Server benutzt
+│   ├── lww.mjs               # CRDT-Kern (JavaScript-Seite)
+│   └── testvectors.json      # verbindliche Fälle für BEIDE Seiten
 ├── client/
 │   ├── src/
 │   │   ├── App.jsx           # Haupt-Komponente + Keyboard Shortcuts
@@ -185,14 +198,17 @@ Blankr/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── package.json
-├── server/
-│   ├── index.js              # Express, REST-API und WebSocket
-│   ├── boards.js             # Board-Ablage auf der Platte
-│   └── package.json
-├── tests/
+├── server/                   # Go
+│   ├── main.go               # HTTP, REST-API, WebSocket, Shutdown
+│   ├── hub.go                # Verbindungen und Boards im Speicher
+│   ├── boards.go             # Board-Ablage auf der Platte
+│   ├── lww.go                # CRDT-Kern (Go-Seite)
+│   ├── lww_test.go           # gemeinsame Testvektoren
+│   └── boards_test.go        # Ablage gegen ein echtes Verzeichnis
+├── tests/                    # JavaScript
 │   ├── crdt.test.mjs         # Zusammenführung, Abgleich, Projektion
-│   └── boards.test.mjs       # Ablage gegen ein echtes Verzeichnis
-├── Dockerfile                # Multi-Stage Build (node:22-alpine)
+│   └── vectors.test.mjs      # dieselben Vektoren wie die Go-Seite
+├── Dockerfile                # Multi-Stage Build (Node + Go -> Alpine)
 ├── docker-compose.yml        # Container-Orchestrierung
 └── README.md
 ```
@@ -219,12 +235,20 @@ jedem Wiederverbinden bekommt ein Client den vollständigen Schnappschuss.
 ### Tests
 
 ```bash
-node --test "tests/**/*.test.mjs"
+node --test "tests/**/*.test.mjs"   # JavaScript-Seite
+cd server && go test ./...          # Go-Seite
 ```
 
-Geprüft wird der Code aus `shared/`, `client/src/sync/` und `server/boards.js`
-direkt — inklusive Konvergenz zweier Clients, Idempotenz, Grabsteinen und der
-Frage, ob eine präparierte Board-ID aus dem Datenverzeichnis herausführen kann.
+Geprüft wird der Code aus `shared/`, `client/src/sync/` und `server/` direkt —
+inklusive Konvergenz zweier Clients, Idempotenz, Grabsteinen und der Frage, ob
+eine präparierte Board-ID aus dem Datenverzeichnis herausführen kann.
+
+**Zwei Implementierungen, eine Wahrheit.** Die Zusammenführung existiert
+zweimal: in JavaScript für den Browser und in Go für den Server. Damit sie
+nicht auseinanderlaufen, lesen beide Testläufe dieselbe Datei
+`shared/testvectors.json` und prüfen jeden Fall dreifach — vorwärts, rückwärts
+und mit doppelt zugestellten Operationen. Wer die Regel auf einer Seite
+ändert, ohne die andere anzupassen, bekommt sofort einen roten Testlauf.
 
 ## Betrieb
 
