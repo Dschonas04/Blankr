@@ -5,3 +5,6 @@ data/
 *.log
 .env
 .vite/
+
+# Go
+server/blankr
