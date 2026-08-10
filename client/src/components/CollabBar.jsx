@@ -4,12 +4,14 @@ export default function CollabBar() {
   const connected = useStore(s => s.collabConnected);
   const users = useStore(s => s.collabUsers);
   const cursors = useStore(s => s.remoteCursors);
+  const boardName = useStore(s => s.collabBoardName);
 
   return (
     <>
       {/* Collab bar */}
       {connected && (
         <div className="ui-collab">
+          <span className="collab-board" title="Geöffnetes Board">{boardName}</span>
           <div id="collab-users">
             {users.map(u => (
               <span

@@ -80,17 +80,14 @@ export default function ActionBar() {
     setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })), selectedIdxs: [] }));
     scheduleAutosave();
     showToast('🗑 Alles gelöscht');
-    if (collab.isConnected()) collab.send({ type: 'clear' });
+    // Das Leeren laeuft als normale Aenderung ueber den Operationsstrom --
+    // eine eigene "clear"-Nachricht braucht es nicht mehr.
   }
 
   function handleCollab() {
-    if (collabConnected) { collab.disconnect(); return; }
-    const room = Math.random().toString(36).substring(2, 8);
-    const u = new URL(window.location);
-    u.searchParams.set('room', room);
-    history.replaceState(null, '', u);
-    collab.connect(room);
-    showToast('🔗 Raum erstellt!');
+    // Kein Zufallsraum mehr, sondern die Board-Auswahl: Boards haben Namen
+    // und bleiben auf dem Server erhalten.
+    setState({ boardPickerOpen: true });
   }
 
   function addSticky() {
@@ -250,7 +247,7 @@ export default function ActionBar() {
           <button className={`a-btn${darkMode ? ' active' : ''}`} title="Dark Mode (D)" onClick={() => setState(s => ({ darkMode: !s.darkMode }))}>
             <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" /></svg>
           </button>
-          <button className={`a-btn${collabConnected ? ' active' : ''}`} title="Zusammenarbeit" onClick={handleCollab}>
+          <button className={`a-btn${collabConnected ? ' active' : ''}`} title="Boards & Zusammenarbeit" onClick={handleCollab}>
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
           </button>
           <button className={`a-btn${gridSnap ? ' active' : ''}`} title="Raster-Snap" onClick={() => setState(s => ({ gridSnap: !s.gridSnap }))}>

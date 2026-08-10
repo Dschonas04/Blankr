@@ -777,3 +777,200 @@ body.fullscreen:hover .ui-actions {
   .t-btn::after { display: none; }
   .chat-panel { right: 8px; bottom: 80px; width: 240px; }
 }
+
+/* ════════════════════════════════════
+   BOARD-VERWALTUNG
+   ════════════════════════════════════ */
+.board-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(24, 24, 27, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.board-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(76vh, 700px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.board-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.board-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.board-close {
+  border: 0;
+  background: transparent;
+  color: var(--text2);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.board-close:hover { color: var(--text); }
+
+.board-create {
+  display: flex;
+  gap: 8px;
+}
+
+.board-create input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--text);
+  font: inherit;
+}
+
+.board-create button {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.board-create button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.board-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+}
+
+.board-list li:hover { background: var(--hover); }
+
+.board-list li.current {
+  border-color: var(--active-bd);
+  background: var(--active-bg);
+}
+
+.board-open {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.board-name { font-weight: 500; }
+
+.board-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.board-online {
+  font-style: normal;
+  color: #2f9e44;
+  font-weight: 500;
+}
+
+.board-rename {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  color: var(--text);
+  font: inherit;
+}
+
+.board-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.board-list li:hover .board-actions,
+.board-list li.current .board-actions { opacity: 1; }
+
+.board-actions button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.board-actions button:hover { color: var(--text); }
+.board-actions button.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+.board-empty,
+.board-hint,
+.board-error {
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.board-error { color: var(--danger); }
+
+.collab-board {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text2);
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
