@@ -1,6 +1,9 @@
 services:
   blankr:
     build: .
+    # Fester Name, damit die Pipeline ein selbst gebautes Abbild
+    # ausrollen kann, statt dass Compose einen eigenen Namen vergibt.
+    image: blankr:latest
     container_name: blankr-whiteboard
     restart: unless-stopped
     ports:
