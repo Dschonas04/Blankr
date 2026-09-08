@@ -583,6 +583,8 @@ html, body {
 /* Der eigene Kreis traegt einen Ring in der Akzentfarbe: in einer Reihe
    gleich aussehender Kreise findet man sich sonst nicht. */
 .collab-dot.selbst { box-shadow: 0 0 0 2px var(--accent); }
+/* Zwei Zeichen brauchen in einem Kreis von 22 px etwas weniger Schrift. */
+.collab-dot.lang { font-size: 9px; letter-spacing: -.02em; }
 .collab-rest {
   background: var(--hover) !important;
   color: var(--text2); text-shadow: none;
