@@ -5,20 +5,24 @@ import { getBBox, rotatePoint, isLineLike, isPolygonShape, getShapeVertices } fr
 
 // ---- background ----
 export function drawBackground(ctx, W, H, view, pattern, dark) {
-  ctx.fillStyle = dark ? '#1e1e1e' : '#f5f5f5';
+  // Dieselben Grundtoene wie die Oberflaeche drumherum: gegrautes Weiss bzw.
+  // das dunkle Anthrazit. Vorher war die Flaeche einen Hauch kaelter als die
+  // Leisten, die darauf liegen, und der Unterschied fiel genau an deren Kante
+  // auf.
+  ctx.fillStyle = dark ? '#1f1f1e' : '#f7f7f6';
   ctx.fillRect(0, 0, W, H);
   if (pattern === 'none') return;
   const sp = BG_SPACING * view.scale;
   if (sp < 4) return;
   const ox = ((view.x * view.scale) % sp + sp) % sp;
   const oy = ((view.y * view.scale) % sp + sp) % sp;
-  ctx.fillStyle = dark ? '#333' : '#ddd';
+  ctx.fillStyle = dark ? '#3a3a37' : '#e2e2df';
   if (pattern === 'dots') {
     for (let x = ox; x < W; x += sp)
       for (let y = oy; y < H; y += sp)
         ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
   } else if (pattern === 'grid') {
-    ctx.strokeStyle = dark ? '#333' : '#ddd';
+    ctx.strokeStyle = dark ? '#3a3a37' : '#e2e2df';
     ctx.lineWidth = 0.5;
     ctx.beginPath();
     for (let x = ox; x < W; x += sp) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
@@ -80,7 +84,7 @@ export function renderStroke(ctx, s, view, dark) {
     case 'pen': case 'eraser': {
       if (!s.points || s.points.length < 2) break;
       if (s.type === 'eraser') {
-        ctx.strokeStyle = dark ? '#1e1e1e' : '#f5f5f5';
+        ctx.strokeStyle = dark ? '#1f1f1e' : '#f7f7f6';
         ctx.globalCompositeOperation = 'source-over';
       }
       ctx.beginPath();
@@ -109,7 +113,7 @@ export function renderStroke(ctx, s, view, dark) {
       ctx.stroke();
       drawArrowHead(ctx, tx(s.x1), ty(s.y1), tx(s.x2), ty(s.y2), Math.max(10, (s.width || 3) * view.scale * 3));
       // Draw anchor dots
-      ctx.fillStyle = dark ? '#4fc3f7' : '#1976d2';
+      ctx.fillStyle = dark ? '#5aa9f0' : '#2383e2';
       for (const p of [{x: s.x1, y: s.y1}, {x: s.x2, y: s.y2}]) {
         ctx.beginPath();
         ctx.arc(tx(p.x), ty(p.y), 4 * view.scale, 0, Math.PI * 2);
@@ -148,14 +152,14 @@ export function renderStroke(ctx, s, view, dark) {
       const rx = tx(Math.min(s.x1, s.x2)), ry = ty(Math.min(s.y1, s.y2));
       const rw = Math.abs(s.x2 - s.x1) * view.scale, rh = Math.abs(s.y2 - s.y1) * view.scale;
       ctx.setLineDash([6, 4]);
-      ctx.strokeStyle = dark ? '#666' : '#999';
+      ctx.strokeStyle = dark ? '#6f6d68' : '#a8a6a1';
       ctx.lineWidth = 1.5 * view.scale;
       ctx.strokeRect(rx, ry, rw, rh);
       ctx.setLineDash([]);
       // Label
       const label = s.label || 'Frame';
       ctx.font = `${12 * view.scale}px Inter, system-ui, sans-serif`;
-      ctx.fillStyle = dark ? '#888' : '#666';
+      ctx.fillStyle = dark ? '#9a9892' : '#86847f';
       ctx.fillText(label, rx + 4 * view.scale, ry - 4 * view.scale);
       break;
     }
@@ -219,7 +223,7 @@ function drawLineSelectionBox(ctx, s, view) {
   const p1 = toScreen(s.x1, s.y1);
   const p2 = toScreen(s.x2, s.y2);
   const r = 5;
-  ctx.strokeStyle = '#2196f3';
+  ctx.strokeStyle = '#2383e2';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([]);
 
@@ -259,7 +263,7 @@ export function drawSelectionBox(ctx, s, view) {
   const rh = bb.h * view.scale;
 
   // Dashed outline
-  ctx.strokeStyle = '#2196f3';
+  ctx.strokeStyle = '#2383e2';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 4]);
   ctx.strokeRect(rx, ry, rw, rh);
@@ -295,7 +299,7 @@ export function drawRubberBand(ctx, rect, view) {
   const w = rect.w * view.scale;
   const h = rect.h * view.scale;
   ctx.save();
-  ctx.strokeStyle = '#2196f3';
+  ctx.strokeStyle = '#2383e2';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
   ctx.strokeRect(x, y, w, h);

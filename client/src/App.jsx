@@ -83,8 +83,8 @@ export default function App() {
           <rect x="3" y="3" width="22" height="22" rx="6" fill="none" stroke="url(#bgrad)" strokeWidth="2.5" />
           <defs>
             <linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6366f1" />
-              <stop offset="100%" stopColor="#a855f7" />
+              <stop offset="0%" stopColor="#2383e2" />
+              <stop offset="100%" stopColor="#2383e2" />
             </linearGradient>
           </defs>
         </svg>

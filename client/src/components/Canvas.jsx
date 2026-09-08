@@ -151,7 +151,7 @@ export default function Canvas() {
       fontFamily: "'Inter', sans-serif",
       fontWeight: bold,
       fontStyle: italic,
-      color: darkMode ? '#e0e0e0' : col,
+      color: darkMode ? '#e6e5e2' : col,
       lineHeight: 1.3,
       minWidth: `${Math.max(60, scaledFs * 3)}px`,
       minHeight: `${scaledFs * 1.4}px`,
