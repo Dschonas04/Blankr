@@ -106,7 +106,7 @@ export default function ActionBar() {
     const c2 = document.createElement('canvas');
     c2.width = cvs.width; c2.height = cvs.height;
     const c2x = c2.getContext('2d');
-    c2x.fillStyle = darkMode ? '#1e1e32' : '#fff';
+    c2x.fillStyle = darkMode ? '#1f1f1e' : '#ffffff';
     c2x.fillRect(0, 0, c2.width, c2.height);
     c2x.drawImage(cvs, 0, 0);
     const a = document.createElement('a');
@@ -122,7 +122,7 @@ export default function ActionBar() {
     const c2 = document.createElement('canvas');
     c2.width = cvs.width; c2.height = cvs.height;
     const c2x = c2.getContext('2d');
-    c2x.fillStyle = darkMode ? '#1e1e32' : '#fff';
+    c2x.fillStyle = darkMode ? '#1f1f1e' : '#ffffff';
     c2x.fillRect(0, 0, c2.width, c2.height);
     c2x.drawImage(cvs, 0, 0);
     const a = document.createElement('a');
@@ -137,7 +137,7 @@ export default function ActionBar() {
     const cvs = document.getElementById('whiteboard');
     const { view, layers } = getState();
     let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cvs.width}" height="${cvs.height}">`;
-    svg += `<rect width="100%" height="100%" fill="${darkMode ? '#1e1e32' : '#fff'}"/>`;
+    svg += `<rect width="100%" height="100%" fill="${darkMode ? '#1f1f1e' : '#ffffff'}"/>`;
     svg += `<g transform="translate(${view.x},${view.y}) scale(${view.scale})">`;
     for (const layer of layers) {
       if (!layer.visible) continue;
