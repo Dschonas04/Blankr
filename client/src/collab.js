@@ -111,10 +111,84 @@ export async function deleteBoard(id) {
   if (!res.ok) throw new Error('Löschen fehlgeschlagen');
 }
 
+/* ── Sitzung ──
+   Frueher landete man auf einem leeren Blatt, das nur im eigenen Browser lag.
+   Wer zusammen zeichnen wollte, musste erst die Boardliste oeffnen, ein Board
+   anlegen und dann teilen -- drei Schritte fuer den Normalfall.
+
+   Jetzt eroeffnet schon der Aufruf der Seite eine Sitzung: steht eine Kennung
+   in der Adresse, wird ihr Board geoeffnet, sonst entsteht eines und die
+   Adresse traegt es danach. Damit ist der Link ab der ersten Sekunde
+   teilbar, und die Adresszeile selbst ist die Einladung.
+
+   Faellt der Server aus, geht die Anwendung in den lokalen Stand zurueck,
+   statt mit einer leeren Flaeche dazustehen. */
+function sitzungsName() {
+  const d = new Date();
+  const zz = (n) => String(n).padStart(2, '0');
+  return `Sitzung ${zz(d.getDate())}.${zz(d.getMonth() + 1)}. ${zz(d.getHours())}:${zz(d.getMinutes())}`;
+}
+
+export function boardAusAdresse() {
+  const p = new URLSearchParams(location.search);
+  return p.get('board') || p.get('room') || null;
+}
+
+/** Die Adresse, die man weitergibt. Immer mit Kennung, nie mit Altlasten. */
+export function sitzungsLink(id = currentBoard) {
+  const url = new URL(location.href);
+  url.searchParams.delete('room');
+  if (id) url.searchParams.set('board', id);
+  url.hash = '';
+  return url.toString();
+}
+
+const LETZTE = 'blankr.letzteSitzung';
+
+export async function sitzungOeffnen() {
+  const vorhanden = boardAusAdresse();
+  if (vorhanden) {
+    merken(vorhanden);
+    connect(vorhanden);
+    return vorhanden;
+  }
+
+  // Ohne Kennung in der Adresse zuerst die zuletzt benutzte Sitzung
+  // versuchen. Sonst entstuende bei jedem Aufruf der blanken Adresse ein
+  // neues Board, und nach einer Woche stuenden dreissig leere in der Liste --
+  // wer die Seite ohne Link oeffnet, will in aller Regel dort weitermachen,
+  // wo er aufgehoert hat.
+  const zuletzt = localStorage.getItem(LETZTE);
+  if (zuletzt) {
+    const boards = await listBoards().catch(() => []);
+    if (boards.some((b) => b.id === zuletzt)) {
+      history.replaceState(null, '', sitzungsLink(zuletzt));
+      connect(zuletzt);
+      return zuletzt;
+    }
+  }
+
+  const meta = await createBoard(sitzungsName());
+  merken(meta.id);
+  history.replaceState(null, '', sitzungsLink(meta.id));
+  connect(meta.id, meta.name);
+  return meta.id;
+}
+
+function merken(id) {
+  try {
+    localStorage.setItem(LETZTE, id);
+  } catch {
+    // Privater Modus oder volle Ablage: dann eben ohne Gedaechtnis.
+  }
+}
+
 /* ── Verbindung ── */
 export function connect(board, boardName) {
   intentionalClose = false;
   currentBoard = board;
+  // Auch der Wechsel ueber die Boardliste zaehlt als "zuletzt benutzt".
+  merken(board);
   clearTimeout(reconnectTimer);
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';

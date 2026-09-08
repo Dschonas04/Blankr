@@ -101,3 +101,9 @@ export const IconDeckkraft = () => (
     <path d="M12 3a9 9 0 0 0 0 18Z" fill="currentColor" stroke="none" />
   </S>
 );
+
+export const IconPruefen = () => (
+  <S>
+    <polyline points="20 6 9 17 4 12" />
+  </S>
+);

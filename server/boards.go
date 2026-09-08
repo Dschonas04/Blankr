@@ -37,6 +37,8 @@ type Store struct {
 	mu     sync.Mutex
 	dir    string
 	boards map[string]*BoardMeta
+	// letzteZeit haelt den zuletzt vergebenen Zeitstempel fest, siehe jetzt().
+	letzteZeit int64
 }
 
 var unsafeID = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
@@ -96,6 +98,25 @@ func (s *Store) persistIndex() {
 	}
 }
 
+// jetzt liefert einen Zeitstempel, der innerhalb dieses Stores streng steigt.
+//
+// UnixMilli allein reicht nicht: zwei Boards, die in derselben Millisekunde
+// angelegt oder geaendert werden, bekommen denselben Wert, und die Liste
+// sortiert nach genau diesem Wert. sort.Slice ist nicht stabil, die
+// Reihenfolge war dann zufaellig -- der Test dazu etwa jedes vierte Mal rot,
+// und in der Oberflaeche sprang ein gerade umbenanntes Board mal nach vorn und
+// mal nicht.
+//
+// Der Aufrufer haelt bereits s.mu.
+func (s *Store) jetzt() int64 {
+	t := time.Now().UnixMilli()
+	if t <= s.letzteZeit {
+		t = s.letzteZeit + 1
+	}
+	s.letzteZeit = t
+	return t
+}
+
 func (s *Store) List() []BoardMeta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,12 +138,24 @@ func (s *Store) Get(id string) (BoardMeta, bool) {
 	return *b, true
 }
 
+// idLaenge ist die Laenge der Kennung in Bytes.
+//
+// Frueher waren es vier, also 32 Bit. Das reichte, solange ein Board ueber
+// eine Liste ausgewaehlt wurde. Seit der Aufruf der Seite selbst eine Sitzung
+// eroeffnet, ist der Link der einzige Zugang zu ihr: wer die Kennung kennt,
+// ist drin. Vier Milliarden Moeglichkeiten laufen einem Skript in Stunden
+// durch, sechzehn Byte nicht.
+//
+// Bestehende Boards behalten ihre kurze Kennung, hier steht nur, wie neue
+// entstehen.
+const idLaenge = 16
+
 func (s *Store) Create(name string) BoardMeta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	buf := make([]byte, 4)
+	buf := make([]byte, idLaenge)
 	rand.Read(buf)
-	now := time.Now().UnixMilli()
+	now := s.jetzt()
 	b := &BoardMeta{ID: hex.EncodeToString(buf), Name: trim(name, 80), CreatedAt: now, UpdatedAt: now}
 	s.boards[b.ID] = b
 	s.persistIndex()
@@ -137,7 +170,7 @@ func (s *Store) Rename(id, name string) (BoardMeta, bool) {
 		return BoardMeta{}, false
 	}
 	b.Name = trim(name, 80)
-	b.UpdatedAt = time.Now().UnixMilli()
+	b.UpdatedAt = s.jetzt()
 	s.persistIndex()
 	return *b, true
 }
@@ -176,7 +209,7 @@ func (s *Store) SaveSnapshot(id string, snap Snapshot) error {
 	}
 	s.mu.Lock()
 	if b, ok := s.boards[id]; ok {
-		b.UpdatedAt = time.Now().UnixMilli()
+		b.UpdatedAt = s.jetzt()
 		s.persistIndex()
 	}
 	s.mu.Unlock()
