@@ -18,6 +18,17 @@ import { IconKette, IconPruefen } from './Icons';
  */
 const SICHTBAR = 4;
 
+/**
+ * Das Kürzel im Kreis. Der Server vergibt Namen wie "Gast 3", und drei Gäste
+ * ergaben dreimal ein G. Steht eine Zahl im Namen, kommt sie deshalb mit.
+ */
+function kuerzel(name = '') {
+  const t = name.trim();
+  const buchstabe = (t.match(/\p{L}/u) || ['?'])[0].toUpperCase();
+  const zahl = t.match(/(\d+)\s*$/);
+  return zahl ? buchstabe + zahl[1] : buchstabe;
+}
+
 export default function CollabBar() {
   const connected = useStore((s) => s.collabConnected);
   const users = useStore((s) => s.collabUsers);
@@ -62,11 +73,15 @@ export default function CollabBar() {
             {gezeigt.map((u, i) => (
               <span
                 key={u.id}
-                className={'collab-dot' + (i === 0 && !fremd.has(u.id) ? ' selbst' : '')}
+                className={
+                  'collab-dot' +
+                  (i === 0 && !fremd.has(u.id) ? ' selbst' : '') +
+                  (kuerzel(u.name).length > 1 ? ' lang' : '')
+                }
                 style={{ background: u.color }}
                 title={i === 0 && !fremd.has(u.id) ? `${u.name} (du)` : u.name}
               >
-                {(u.name || '?').trim().charAt(0).toUpperCase()}
+                {kuerzel(u.name)}
               </span>
             ))}
             {rest > 0 && <span className="collab-dot collab-rest">+{rest}</span>}
