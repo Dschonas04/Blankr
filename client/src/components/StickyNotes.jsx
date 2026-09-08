@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore, setState, scheduleAutosave } from '../store';
+import { IconKreuz } from './Icons';
 
 const STICKY_COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fde68a', '#e9d5ff'];
 
@@ -98,7 +99,9 @@ function StickyNote({ note, view }) {
             />
           ))}
         </div>
-        <button className="sticky-close" onClick={remove}>✕</button>
+        <button className="sticky-close" title="Zettel entfernen" aria-label="Zettel entfernen" onClick={remove}>
+          <IconKreuz />
+        </button>
       </div>
       <textarea
         className="sticky-body"

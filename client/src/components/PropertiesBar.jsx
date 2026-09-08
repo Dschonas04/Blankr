@@ -1,4 +1,5 @@
 import { useStore, setState, getState, pushUndo, scheduleAutosave } from '../store';
+import { IconDeckkraft } from './Icons';
 
 const COLORS = ['#1e1e1e', '#dc2626', '#16a34a', '#2563eb', '#ea580c', '#9333ea'];
 
@@ -78,7 +79,9 @@ export default function PropertiesBar() {
 
       {/* Opacity */}
       <div className="prop-section">
-        <span className="prop-label">◐</span>
+        <span className="prop-label" title="Deckkraft" aria-label="Deckkraft">
+          <IconDeckkraft />
+        </span>
         <input
           type="range"
           className="prop-slider"
