@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore, getState, setState } from '../store';
 import { send as collabSend, isConnected } from '../collab';
+import { IconKreuz, IconSenden } from './Icons';
 
 export default function ChatPanel() {
   const chatOpen = useStore(s => s.chatOpen);
@@ -38,7 +39,14 @@ export default function ChatPanel() {
     <div className="chat-panel">
       <div className="chat-header">
         <span>Chat</span>
-        <button className="chat-close" onClick={() => setState({ chatOpen: false })}>✕</button>
+        <button
+          className="chat-close"
+          title="Chat schließen"
+          aria-label="Chat schließen"
+          onClick={() => setState({ chatOpen: false })}
+        >
+          <IconKreuz />
+        </button>
       </div>
       <div className="chat-messages" ref={listRef}>
         {messages.length === 0 && (
@@ -61,7 +69,9 @@ export default function ChatPanel() {
           onChange={e => setText(e.target.value)}
           disabled={!connected}
         />
-        <button type="submit" disabled={!connected || !text.trim()}>↵</button>
+        <button type="submit" title="Senden" aria-label="Senden" disabled={!connected || !text.trim()}>
+          <IconSenden />
+        </button>
       </form>
     </div>
   );

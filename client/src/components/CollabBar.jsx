@@ -1,4 +1,5 @@
 import { useStore, showToast } from '../store';
+import { IconKette } from './Icons';
 
 export default function CollabBar() {
   const connected = useStore(s => s.collabConnected);
@@ -25,10 +26,11 @@ export default function CollabBar() {
           <button
             className="share-btn"
             onClick={() =>
-              navigator.clipboard.writeText(location.href).then(() => showToast('🔗 Link kopiert!'))
+              navigator.clipboard.writeText(location.href).then(() => showToast('Link kopiert'))
             }
           >
-            🔗 Link kopieren
+            <IconKette />
+            Link kopieren
           </button>
         </div>
       )}

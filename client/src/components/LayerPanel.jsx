@@ -1,4 +1,5 @@
 import { useStore, setState, pushUndo, scheduleAutosave } from '../store';
+import { IconAuge, IconAugeZu, IconKreuz } from './Icons';
 
 export default function LayerPanel() {
   const open = useStore(s => s.layerPanelOpen);
@@ -63,8 +64,13 @@ export default function LayerPanel() {
                 setState({ activeLayer: i });
               }}
             >
-              <button className="l-vis" onClick={() => toggleVisibility(i)}>
-                {layer.visible ? '👁' : '◌'}
+              <button
+                className="l-vis"
+                title={layer.visible ? 'Ebene ausblenden' : 'Ebene einblenden'}
+                aria-label={layer.visible ? 'Ebene ausblenden' : 'Ebene einblenden'}
+                onClick={() => toggleVisibility(i)}
+              >
+                {layer.visible ? <IconAuge /> : <IconAugeZu />}
               </button>
               <span className="l-name">{layer.name}</span>
               <input
@@ -75,7 +81,14 @@ export default function LayerPanel() {
                 value={Math.round(layer.opacity * 100)}
                 onChange={e => setOpacity(i, +e.target.value / 100)}
               />
-              <button className="l-del" onClick={() => deleteLayer(i)}>✕</button>
+              <button
+                className="l-del"
+                title="Ebene löschen"
+                aria-label="Ebene löschen"
+                onClick={() => deleteLayer(i)}
+              >
+                <IconKreuz />
+              </button>
             </li>
           );
         })}

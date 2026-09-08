@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore, getState, setState, undo, redo, pushUndo, showToast, scheduleAutosave } from '../store';
 import * as collab from '../collab';
+import { IconBild, IconDrucker, IconOeffnen, IconSpeichern, IconStift } from './Icons';
 
 /* ── SVG Export helper ── */
 function strokeSVG(s) {
@@ -75,11 +76,11 @@ export default function ActionBar() {
   function handleClear() {
     const hasStrokes = getState().layers.some(l => l.strokes.length > 0);
     if (!hasStrokes) { showToast('Canvas ist bereits leer'); return; }
-    if (!window.confirm('⚠️ Wirklich ALLES löschen?\n\nAlle Zeichnungen auf allen Ebenen werden entfernt. Diese Aktion kann mit Strg+Z rückgängig gemacht werden.')) return;
+    if (!window.confirm('Wirklich ALLES löschen?\n\nAlle Zeichnungen auf allen Ebenen werden entfernt. Diese Aktion kann mit Strg+Z rückgängig gemacht werden.')) return;
     pushUndo();
     setState(s => ({ layers: s.layers.map(l => ({ ...l, strokes: [] })), selectedIdxs: [] }));
     scheduleAutosave();
-    showToast('🗑 Alles gelöscht');
+    showToast('Alles gelöscht');
     // Das Leeren laeuft als normale Aenderung ueber den Operationsstrom --
     // eine eigene "clear"-Nachricht braucht es nicht mehr.
   }
@@ -113,7 +114,7 @@ export default function ActionBar() {
     a.download = 'blankr.png';
     a.href = c2.toDataURL('image/png');
     a.click();
-    showToast('📸 PNG gespeichert');
+    showToast('PNG gespeichert');
   }
 
   function exportJPEG() {
@@ -129,7 +130,7 @@ export default function ActionBar() {
     a.download = 'blankr.jpg';
     a.href = c2.toDataURL('image/jpeg', 0.92);
     a.click();
-    showToast('📸 JPEG gespeichert');
+    showToast('JPEG gespeichert');
   }
 
   function exportSVG() {
@@ -151,13 +152,13 @@ export default function ActionBar() {
     a.download = 'blankr.svg';
     a.href = URL.createObjectURL(blob);
     a.click();
-    showToast('🖼 SVG gespeichert');
+    showToast('SVG gespeichert');
   }
 
   function exportPDF() {
     setExportOpen(false);
     window.print();
-    showToast('📄 Druckdialog geöffnet');
+    showToast('Druckdialog geöffnet');
   }
 
   function exportJSON() {
@@ -168,7 +169,7 @@ export default function ActionBar() {
     a.download = 'blankr.json';
     a.href = URL.createObjectURL(blob);
     a.click();
-    showToast('💾 JSON gespeichert');
+    showToast('JSON gespeichert');
   }
 
   function importJSON() {
@@ -186,12 +187,12 @@ export default function ActionBar() {
             pushUndo();
             setState({ layers: data.layers, selectedIdxs: [] });
             scheduleAutosave();
-            showToast('📂 JSON importiert');
+            showToast('JSON importiert');
           } else {
-            showToast('⚠️ Ungültiges Format');
+            showToast('Ungültiges Format');
           }
         } catch {
-          showToast('⚠️ JSON konnte nicht gelesen werden');
+          showToast('JSON konnte nicht gelesen werden');
         }
       };
       reader.readAsText(file);
@@ -283,23 +284,23 @@ export default function ActionBar() {
         <div className="popup" style={{ position: 'fixed', ...exportPos }}>
           <div className="popup-title">Exportieren</div>
           <button className="popup-action" onClick={exportPNG}>
-            <span className="popup-action-icon">📸</span> Als PNG speichern
+            <span className="popup-action-icon"><IconBild /></span> Als PNG speichern
           </button>
           <button className="popup-action" onClick={exportJPEG}>
-            <span className="popup-action-icon">🖼️</span> Als JPEG speichern
+            <span className="popup-action-icon"><IconBild /></span> Als JPEG speichern
           </button>
           <button className="popup-action" onClick={exportSVG}>
-            <span className="popup-action-icon">✏️</span> Als SVG speichern
+            <span className="popup-action-icon"><IconStift /></span> Als SVG speichern
           </button>
           <button className="popup-action" onClick={exportPDF}>
-            <span className="popup-action-icon">📄</span> Drucken / PDF
+            <span className="popup-action-icon"><IconDrucker /></span> Drucken / PDF
           </button>
           <hr style={{border:'none',borderTop:'1px solid var(--border)',margin:'4px 0'}}/>
           <button className="popup-action" onClick={() => { setExportOpen(false); exportJSON(); }}>
-            <span className="popup-action-icon">💾</span> Als JSON speichern
+            <span className="popup-action-icon"><IconSpeichern /></span> Als JSON speichern
           </button>
           <button className="popup-action" onClick={() => { setExportOpen(false); importJSON(); }}>
-            <span className="popup-action-icon">📂</span> JSON importieren
+            <span className="popup-action-icon"><IconOeffnen /></span> JSON importieren
           </button>
         </div>
       )}

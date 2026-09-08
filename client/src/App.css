@@ -988,3 +988,63 @@ body.fullscreen:hover .ui-actions {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ════════════════════════════════════
+   SYMBOLE (components/Icons.jsx)
+
+   Ein Satz Regeln fuer alle kleinen Symbole, die frueher Emojis waren. Sie
+   erben die Schriftfarbe, damit ein Knopf im Hover oder im dunklen Ton
+   mitgeht -- das war der Hauptgrund, die Emojis loszuwerden: ein 📸 bleibt
+   gelb, egal was die Leiste darum macht.
+   ════════════════════════════════════ */
+.l-vis svg,
+.l-del svg,
+.chat-close svg,
+.chat-input button svg,
+.sticky-close svg,
+.prop-label svg,
+.popup-action-icon svg,
+.share-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: block;
+}
+.popup-action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.prop-label svg {
+  width: 16px;
+  height: 16px;
+}
+/* Der Knopf im Chat traegt ein gefuelltes Papierflieger-Zeichen, dort steht
+   der Strich auf der Akzentflaeche. */
+.chat-input button svg {
+  width: 14px;
+  height: 14px;
+}
+/* Die Emojis brachten ihre eigene Groesse mit, die Knoepfe waren deshalb auf
+   font-size eingestellt. Mit einem SVG darin muss der Inhalt zentriert
+   werden, sonst haengt das Zeichen an der Grundlinie. */
+.l-vis,
+.l-del,
+.chat-close,
+.chat-input button,
+.prop-label,
+.share-btn,
+.popup-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.share-btn {
+  gap: 6px;
+}
+.popup-action-icon {
+  width: 16px;
+}
