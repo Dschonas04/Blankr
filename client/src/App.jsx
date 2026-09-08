@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useStore, setState, undo, redo, loadSaved } from './store';
-import { connect } from './collab';
+import { sitzungOeffnen } from './collab';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import PropertiesBar from './components/PropertiesBar';
@@ -28,12 +28,11 @@ export default function App() {
     document.body.classList.toggle('fullscreen', fullscreen);
   }, [fullscreen]);
 
-  /* Lokalen Stand laden; zeigt die URL auf ein Board, gewinnt das Board */
+  /* Der Aufruf der Seite ist bereits die Sitzung: entweder die aus der
+     Adresse, oder eine neue, deren Kennung danach in der Adresse steht.
+     Ohne erreichbaren Server bleibt der lokale Stand. */
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const board = params.get('board') || params.get('room');
-    if (board) connect(board);
-    else loadSaved();
+    sitzungOeffnen().catch(() => loadSaved());
   }, []);
 
   /* Global keyboard shortcuts */
