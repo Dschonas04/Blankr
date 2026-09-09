@@ -207,6 +207,27 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
+// saubererName macht aus einer Eingabe einen anzeigbaren Namen.
+//
+// Er landet ungeprueft in der Oberflaeche der anderen Teilnehmer, also faellt
+// alles weg, was dort nichts zu suchen hat: Steuerzeichen, Zeilenumbrueche und
+// alles jenseits von 24 Zeichen. Gekuerzt wird nach Runen und nicht nach
+// Bytes, sonst zerschneidet die Grenze einen Umlaut.
+func saubererName(roh string) string {
+	roh = strings.TrimSpace(roh)
+	gefiltert := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, roh)
+	runen := []rune(gefiltert)
+	if len(runen) > 24 {
+		runen = runen[:24]
+	}
+	return strings.TrimSpace(string(runen))
+}
+
 type wsMessage struct {
 	Type string          `json:"type"`
 	Ops  []Op            `json:"ops,omitempty"`
@@ -243,11 +264,18 @@ func (s *server) websocket(w http.ResponseWriter, r *http.Request) {
 	idBuf := make([]byte, 8)
 	rand.Read(idBuf)
 	n := colorIdx.Add(1)
+	// Der Client bringt den Namen mit, den sich jemand gegeben hat. Ohne
+	// Angabe bleibt es bei der Nummer: "Gast 3" ist besser als ein leerer
+	// Kreis, aber schlechter als ein Name.
+	name := saubererName(q.Get("name"))
+	if name == "" {
+		name = "Gast " + itoa(n)
+	}
 	c := &client{
 		user: User{
 			ID:    hex.EncodeToString(idBuf),
 			Color: palette[int(n-1)%len(palette)],
-			Name:  "Gast " + itoa(n),
+			Name:  name,
 		},
 		conn: conn,
 		send: make(chan []byte, sendBuffer),
@@ -329,6 +357,19 @@ func (s *server) readPump(board *Board, c *client) {
 		case "chat":
 			board.broadcast(c, map[string]any{
 				"type": "chat", "userId": c.user.ID, "text": msg.Text, "id": msg.ID,
+			})
+
+		case "name":
+			// Der Name wird unter derselben Sperre gesetzt, unter der die
+			// Nutzerliste gelesen wird -- sonst liest ein anderer Verbund
+			// mitten im Schreiben.
+			neu := saubererName(msg.Text)
+			if neu == "" {
+				continue
+			}
+			board.setzeName(c, neu)
+			board.broadcast(c, map[string]any{
+				"type": "user-renamed", "userId": c.user.ID, "name": neu,
 			})
 
 		case "resync":

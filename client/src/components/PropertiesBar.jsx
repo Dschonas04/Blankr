@@ -1,5 +1,4 @@
 import { useStore, setState, getState, pushUndo, scheduleAutosave } from '../store';
-import { IconDeckkraft } from './Icons';
 
 const COLORS = ['#1e1e1e', '#dc2626', '#16a34a', '#2563eb', '#ea580c', '#9333ea'];
 
@@ -31,24 +30,32 @@ export default function PropertiesBar() {
   }
 
   return (
+    /* Die Leiste sagt jetzt, was sie tut.
+     *
+     * Vorher stand hier eine Reihe wortloser Bedienelemente: sechs Kreise, ein
+     * Punkt an einem Schieber, ein halbgefuellter Kreis an einem zweiten, ein
+     * Quadrat. Was welcher Schieber macht, erfuhr man erst, wenn man ihn zog,
+     * und welchen Wert er gerade hat, ueberhaupt nicht.
+     *
+     * Deshalb: eine kleine Ueberschrift je Gruppe und die Zahl daneben. Das
+     * ist mehr Text auf dem Bildschirm, aber es ist der Text, der die Frage
+     * beantwortet, die man an dieser Stelle hat. */
     <div className="ui-props">
-      {/* Colors */}
-      <div className="prop-section">
+      <div className="prop-gruppe">
+        <span className="prop-titel">Farbe</span>
         <div className="color-row">
-          {COLORS.map(c => (
+          {COLORS.map((c) => (
             <button
               key={c}
               className={`swatch${color === c ? ' active' : ''}`}
               style={{ '--c': c }}
+              title={c}
+              aria-label={`Farbe ${c}`}
               onClick={() => setColor(c)}
             />
           ))}
-          <label className="custom-color">
-            <input
-              type="color"
-              value={color}
-              onChange={e => setColor(e.target.value)}
-            />
+          <label className="custom-color" title="Eigene Farbe">
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
             <svg viewBox="0 0 24 24" width="16" height="16">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 2a10 10 0 0 1 0 20 10 10 0 0 1 0-20" fill="none" />
@@ -59,48 +66,59 @@ export default function PropertiesBar() {
 
       <i className="prop-sep" />
 
-      {/* Size */}
-      <div className="prop-section">
-        <span
-          className="prop-dot"
-          style={{ width: Math.max(4, lineWidth), height: Math.max(4, lineWidth) }}
-        />
-        <input
-          type="range"
-          className="prop-slider"
-          min="1"
-          max="30"
-          value={lineWidth}
-          onChange={e => setState({ lineWidth: +e.target.value })}
-        />
+      <div className="prop-gruppe">
+        <span className="prop-titel">Stärke</span>
+        <div className="prop-regler">
+          <span
+            className="prop-dot"
+            style={{ width: Math.max(4, lineWidth), height: Math.max(4, lineWidth) }}
+          />
+          <input
+            type="range"
+            className="prop-slider"
+            min="1"
+            max="30"
+            value={lineWidth}
+            aria-label="Strichstärke"
+            onChange={(e) => setState({ lineWidth: +e.target.value })}
+          />
+          <span className="prop-wert">{lineWidth}</span>
+        </div>
       </div>
 
       <i className="prop-sep" />
 
-      {/* Opacity */}
-      <div className="prop-section">
-        <span className="prop-label" title="Deckkraft" aria-label="Deckkraft">
-          <IconDeckkraft />
-        </span>
-        <input
-          type="range"
-          className="prop-slider"
-          min="5"
-          max="100"
-          value={Math.round(opacity * 100)}
-          onChange={e => setState({ opacity: +e.target.value / 100 })}
-        />
+      <div className="prop-gruppe">
+        <span className="prop-titel">Deckkraft</span>
+        <div className="prop-regler">
+          <input
+            type="range"
+            className="prop-slider"
+            min="5"
+            max="100"
+            value={Math.round(opacity * 100)}
+            aria-label="Deckkraft"
+            onChange={(e) => setState({ opacity: +e.target.value / 100 })}
+          />
+          <span className="prop-wert">{Math.round(opacity * 100)}%</span>
+        </div>
       </div>
 
       <i className="prop-sep" />
 
-      {/* Fill */}
+      {/* Die Fuellung ist ein Zustand und kein Vorgang: sie steht deshalb als
+          Schalter mit Wort da und nicht als Quadrat, das man ausprobieren
+          muss. */}
       <button
-        className={`prop-btn${filled ? ' fill-on' : ''}`}
-        title="Füllung"
+        className={`prop-schalter${filled ? ' an' : ''}`}
+        title="Formen gefüllt zeichnen"
+        aria-pressed={filled}
         onClick={() => setState({ filled: !filled })}
       >
-        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3" /></svg>
+        <svg viewBox="0 0 24 24">
+          <rect x="4" y="4" width="16" height="16" rx="3" />
+        </svg>
+        Füllung
       </button>
     </div>
   );
