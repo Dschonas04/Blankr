@@ -128,6 +128,15 @@ func (b *Board) users() []User {
 	return out
 }
 
+// setzeName aendert den Anzeigenamen eines Teilnehmers unter der Sperre des
+// Boards. users() liest dieselben Felder, deshalb darf das nicht nebenher aus
+// der Leseschleife der Verbindung geschehen.
+func (b *Board) setzeName(c *client, name string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	c.user.Name = name
+}
+
 // broadcast stellt an alle ausser exclude zu. Ist der Puffer eines Clients
 // voll, wird die Verbindung getrennt statt den ganzen Server auszubremsen.
 func (b *Board) broadcast(exclude *client, msg any) {

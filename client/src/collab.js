@@ -144,6 +144,38 @@ export function sitzungsLink(id = currentBoard) {
 }
 
 const LETZTE = 'blankr.letzteSitzung';
+const NAME = 'blankr.name';
+
+/** Der selbst gewaehlte Name. Leer heisst: der Server vergibt eine Nummer. */
+export function eigenerName() {
+  try {
+    return localStorage.getItem(NAME) || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Namen setzen. Im laufenden Betrieb geht das ohne neue Verbindung: der
+ * Server traegt ihn ein und sagt es den anderen. Ohne Verbindung wird er nur
+ * gemerkt und beim naechsten Verbinden mitgeschickt.
+ */
+export function setzeEigenenNamen(name) {
+  const sauber = String(name || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 24);
+  try {
+    if (sauber) localStorage.setItem(NAME, sauber);
+    else localStorage.removeItem(NAME);
+  } catch {
+    // ohne Gedaechtnis, aber die laufende Sitzung kennt ihn trotzdem
+  }
+  if (sauber && isConnected()) send({ type: 'name', text: sauber });
+  if (sauber && userId) {
+    setState((s) => ({
+      collabUsers: s.collabUsers.map((u) => (u.id === userId ? { ...u, name: sauber } : u)),
+    }));
+  }
+  return sauber;
+}
 
 export async function sitzungOeffnen() {
   const vorhanden = boardAusAdresse();
@@ -192,7 +224,11 @@ export function connect(board, boardName) {
   clearTimeout(reconnectTimer);
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws?board=${encodeURIComponent(board)}&site=${SITE}`);
+  const name = eigenerName();
+  ws = new WebSocket(
+    `${proto}://${location.host}/ws?board=${encodeURIComponent(board)}&site=${SITE}` +
+      (name ? `&name=${encodeURIComponent(name)}` : ''),
+  );
 
   ws.onopen = () => {
     reconnectDelay = 1000;
@@ -226,6 +262,21 @@ export function connect(board, boardName) {
       case 'user-joined':
         showToast(`${msg.user.name} ist dazugekommen`);
         setState((s) => ({ collabUsers: [...s.collabUsers, msg.user] }));
+        break;
+
+      case 'user-renamed':
+        setState((s) => ({
+          collabUsers: s.collabUsers.map((u) =>
+            u.id === msg.userId ? { ...u, name: msg.name } : u,
+          ),
+          // Der Zeiger traegt den Namen als Etikett; ohne das hinge dort der
+          // alte, bis der andere die Maus wieder bewegt.
+          remoteCursors: Object.fromEntries(
+            Object.entries(s.remoteCursors).map(([k, c]) =>
+              k === msg.userId ? [k, { ...c, name: msg.name }] : [k, c],
+            ),
+          ),
+        }));
         break;
 
       case 'user-left':

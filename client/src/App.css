@@ -253,6 +253,77 @@ html, body {
   font-size: 14px; color: var(--text3);
   line-height: 1; cursor: default; flex-shrink: 0;
 }
+
+/* Eine Gruppe je Sache: Ueberschrift oben, Bedienung darunter. Die
+   Ueberschrift traegt dieselbe Machart wie die Marke der Sitzungsleiste --
+   klein, gesperrt, gedaempft --, damit die beiden Leisten am unteren Rand
+   nicht wie zwei verschiedene Programme wirken. */
+.prop-gruppe {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.prop-titel {
+  font-size: 9px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text3); line-height: 1;
+}
+.prop-regler {
+  display: flex; align-items: center; gap: 8px;
+}
+/* Die Zahl steht rechts vom Schieber und hat eine feste Breite: ohne die
+   wandert der Schieber beim Ziehen, weil "9" schmaler ist als "30". */
+.prop-wert {
+  font-size: 11px; color: var(--text2);
+  min-width: 30px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.prop-schalter {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text2); font: inherit; font-size: 12px;
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.prop-schalter svg {
+  width: 14px; height: 14px;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.prop-schalter:hover { background: var(--hover); color: var(--text); }
+.prop-schalter.an {
+  background: var(--active-bg); border-color: var(--active-bd); color: var(--active-bd);
+}
+.prop-schalter.an svg { fill: var(--accent-soft); }
+
+/* Name in der Sitzungsleiste */
+.collab-name-knopf {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text2); font: inherit; font-size: 11px;
+  padding: 4px 9px; border-radius: var(--radius); cursor: pointer;
+  max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.collab-name-knopf:hover { background: var(--hover); color: var(--text); }
+.collab-name-knopf svg {
+  width: 12px; height: 12px; flex-shrink: 0;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.collab-name-form { display: flex; align-items: center; gap: 4px; }
+.collab-name-feld {
+  width: 130px; padding: 4px 8px; font: inherit; font-size: 12px;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--bg); color: var(--text); outline: none;
+}
+.collab-name-ok {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; cursor: pointer;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+}
+.collab-name-ok svg {
+  width: 14px; height: 14px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 .prop-btn {
   width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;

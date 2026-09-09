@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
-import { sitzungsLink } from '../collab';
+import { eigenerName, setzeEigenenNamen, sitzungsLink } from '../collab';
 import { useStore, showToast } from '../store';
-import { IconKette, IconPruefen } from './Icons';
+import { IconKette, IconPruefen, IconStift } from './Icons';
 
 /**
  * Die Leiste zur Sitzung.
@@ -35,6 +35,8 @@ export default function CollabBar() {
   const cursors = useStore((s) => s.remoteCursors);
   const boardName = useStore((s) => s.collabBoardName);
   const [kopiert, setKopiert] = useState(false);
+  const [nameOffen, setNameOffen] = useState(false);
+  const [entwurf, setEntwurf] = useState(eigenerName());
 
   // Die eigene Kennung steht im Store nicht, wohl aber im Zeigerstrom: wer
   // dort fehlt, ist man selbst. Reicht für die Reihenfolge und spart eine
@@ -88,6 +90,52 @@ export default function CollabBar() {
           </div>
 
           {users.length < 2 && <span className="collab-allein">niemand sonst da</span>}
+
+          {/* Der eigene Name. Er stand vorher nicht zur Wahl: der Server hat
+              "Gast 3" vergeben, und dabei blieb es. In einer Runde zu dritt
+              weiss dann niemand, wer welcher Zeiger ist. */}
+          {nameOffen ? (
+            <form
+              className="collab-name-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const gesetzt = setzeEigenenNamen(entwurf);
+                setEntwurf(gesetzt);
+                setNameOffen(false);
+                if (gesetzt) showToast(`Du heißt jetzt ${gesetzt}`);
+              }}
+            >
+              <input
+                className="collab-name-feld"
+                autoFocus
+                maxLength={24}
+                placeholder="Dein Name"
+                value={entwurf}
+                onChange={(e) => setEntwurf(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setEntwurf(eigenerName());
+                    setNameOffen(false);
+                  }
+                }}
+              />
+              <button type="submit" className="collab-name-ok">
+                <IconPruefen />
+              </button>
+            </form>
+          ) : (
+            <button
+              className="collab-name-knopf"
+              title="Namen wählen"
+              onClick={() => {
+                setEntwurf(eigenerName());
+                setNameOffen(true);
+              }}
+            >
+              <IconStift />
+              {eigenerName() || 'Name wählen'}
+            </button>
+          )}
 
           <button className="share-btn" onClick={linkKopieren} title={sitzungsLink()}>
             {kopiert ? <IconPruefen /> : <IconKette />}
