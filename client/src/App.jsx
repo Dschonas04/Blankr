@@ -138,24 +138,28 @@ export default function App() {
       <Canvas />
       <StickyNotes />
 
-      {/* Brand */}
-      <div className="ui-brand">
-        <svg className="brand-logo" viewBox="0 0 28 28" width="28" height="28">
-          <rect x="3" y="3" width="22" height="22" rx="6" fill="none" stroke="url(#bgrad)" strokeWidth="2.5" />
-          <defs>
-            <linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#2383e2" />
-              <stop offset="100%" stopColor="#2383e2" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <span className="brand-text">Blankr</span>
-        {nurLesen && <span className="nur-lesen-marke">Nur ansehen</span>}
-        {auth.konto && (
-          <button type="button" className="konto-knopf" onClick={() => setState({ kontoOffen: true })} title={`Konto: ${auth.konto.email}`}>
-            {(auth.konto.name || '?').trim().charAt(0).toUpperCase()}
-          </button>
-        )}
+      {/* Marke und Sitzung teilen sich die Ecke oben links. Unten links stiessen
+          die Sitzungsleiste und die Eigenschaften schon ab 1440 px aneinander. */}
+      <div className="ui-oben-links">
+        <div className="ui-brand">
+          <svg className="brand-logo" viewBox="0 0 28 28" width="28" height="28">
+            <rect x="3" y="3" width="22" height="22" rx="6" fill="none" stroke="url(#bgrad)" strokeWidth="2.5" />
+            <defs>
+              <linearGradient id="bgrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#2383e2" />
+                <stop offset="100%" stopColor="#2383e2" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span className="brand-text">Blankr</span>
+          {nurLesen && <span className="nur-lesen-marke">Nur ansehen</span>}
+          {auth.konto && (
+            <button type="button" className="konto-knopf" onClick={() => setState({ kontoOffen: true })} title={`Konto: ${auth.konto.email}`}>
+              {(auth.konto.name || '?').trim().charAt(0).toUpperCase()}
+            </button>
+          )}
+        </div>
+        <CollabBar />
       </div>
 
       {!nurLesen && <Toolbar />}
@@ -163,7 +167,6 @@ export default function App() {
       <ActionBar />
       <ZoomControls />
       <LayerPanel />
-      <CollabBar />
       <Toast />
       <ContextMenu />
       <ChatPanel />

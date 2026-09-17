@@ -143,7 +143,7 @@ export default function CollabBar() {
               }}
             >
               <IconStift />
-              {eigenerName() || 'Name wählen'}
+              <span className="collab-name-text">{eigenerName() || 'Name wählen'}</span>
             </button>
           )}
 
