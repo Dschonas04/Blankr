@@ -69,6 +69,16 @@ const initial = {
   remoteCursors: {},
   boardPickerOpen: false,
   boards: [],
+  // Konto und Rechte
+  auth: null,
+  nurLesen: false,
+  collabRolle: null,
+  collabFreigabe: null,
+  anmeldungNoetig: false,
+  linkUngueltig: null,
+  kontoOffen: false,
+  freigabeOffen: null,
+  rechtlichesOffen: null,
 };
 
 let state = { ...initial };
@@ -114,8 +124,22 @@ export function getState() {
   return state;
 }
 
+let nurLesenGemeldet = 0;
+
 export function setState(partial) {
   const next = typeof partial === 'function' ? partial(state) : partial;
+
+  // Wer ueber einen Ansehen-Link drin ist, aendert nichts. Der Server wuerde
+  // die Operationen ohnehin verwerfen; ohne diese Sperre saehe man lokal aber
+  // Striche, die sonst niemand sieht und die beim naechsten Abgleich
+  // verschwinden.
+  if (state.nurLesen && next && next.layers && next.layers !== state.layers && !applyingRemote) {
+    delete next.layers;
+    if (Date.now() - nurLesenGemeldet > 4000) {
+      nurLesenGemeldet = Date.now();
+      setTimeout(() => showToast('Nur ansehen: Änderungen sind hier nicht möglich'), 0);
+    }
+  }
 
   // Jede Aenderung an den Ebenen laeuft durch genau diesen Punkt: sie wird
   // mit dem CRDT-Dokument abgeglichen und als Operationsfolge verschickt.

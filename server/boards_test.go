@@ -20,8 +20,8 @@ func neuerStore(t *testing.T) *Store {
 func TestBoardsAnlegenUmbenennenSortieren(t *testing.T) {
 	s := neuerStore(t)
 
-	a := s.Create("Sprint Planung")
-	b := s.Create("Architektur")
+	a := s.Create("Sprint Planung", "k1")
+	b := s.Create("Architektur", "k1")
 
 	if meta, ok := s.Get(a.ID); !ok || meta.Name != "Sprint Planung" {
 		t.Fatalf("Board a nicht wiedergefunden: %+v", meta)
@@ -44,12 +44,12 @@ func TestBoardsAnlegenUmbenennenSortieren(t *testing.T) {
 func TestNameWirdBegrenztUndLeerErsetzt(t *testing.T) {
 	s := neuerStore(t)
 
-	leer := s.Create("   ")
+	leer := s.Create("   ", "k1")
 	if leer.Name != "Neues Board" {
 		t.Errorf("leerer Name wurde zu %q, erwartet \"Neues Board\"", leer.Name)
 	}
 
-	lang := s.Create(strings.Repeat("x", 200))
+	lang := s.Create(strings.Repeat("x", 200), "k1")
 	if len([]rune(lang.Name)) != 80 {
 		t.Errorf("Name hat %d Zeichen, erwartet 80", len([]rune(lang.Name)))
 	}
@@ -57,7 +57,7 @@ func TestNameWirdBegrenztUndLeerErsetzt(t *testing.T) {
 
 func TestSchnappschussSchreibenUndLesen(t *testing.T) {
 	s := neuerStore(t)
-	board := s.Create("Speichertest")
+	board := s.Create("Speichertest", "k1")
 
 	doc := NewDoc("a")
 	doc.ApplyOp(Op{T: "set", ID: "s1", Kind: "stroke", Data: json.RawMessage(`{"v":1}`), Clock: 7, Site: "a"})
@@ -123,7 +123,7 @@ func TestLoeschenEntferntEintragUndDatei(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := s.Create("Wegwerf")
+	board := s.Create("Wegwerf", "k1")
 	s.SaveSnapshot(board.ID, Snapshot{})
 
 	if !s.Remove(board.ID) {
@@ -148,7 +148,7 @@ func TestIndexUeberlebtNeustart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board := s1.Create("Bleibt bestehen")
+	board := s1.Create("Bleibt bestehen", "k1")
 
 	s2, err := NewStore(dir)
 	if err != nil {

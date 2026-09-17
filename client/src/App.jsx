@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { useStore, setState, undo, redo, loadSaved } from './store';
-import { sitzungOeffnen } from './collab';
+import { freigabeAusAdresse, sitzungOeffnen } from './collab';
+import { api } from './api';
+import Anmeldung from './components/Anmeldung';
+import FreigabeDialog from './components/FreigabeDialog';
+import KontoDialog from './components/KontoDialog';
+import Rechtliches, { FussLinks } from './components/Rechtliches';
 import Canvas from './components/Canvas';
 import Toolbar from './components/Toolbar';
 import PropertiesBar from './components/PropertiesBar';
@@ -17,23 +22,49 @@ import BoardPicker from './components/BoardPicker';
 export default function App() {
   const darkMode = useStore(s => s.darkMode);
   const fullscreen = useStore(s => s.fullscreen);
+  const auth = useStore(s => s.auth);
+  const anmeldungNoetig = useStore(s => s.anmeldungNoetig);
+  const linkUngueltig = useStore(s => s.linkUngueltig);
+  const nurLesen = useStore(s => s.nurLesen);
+  const kontoId = auth?.konto?.id;
+  const freigabe = freigabeAusAdresse();
+
+  /* Zuerst fragen, wer man ist. Ohne erreichbaren Server bleibt nur der
+     lokale Stand in diesem Browser. */
+  useEffect(() => {
+    api('/api/status')
+      .then((status) => setState({ auth: status }))
+      .catch(() => setState({ auth: { offline: true } }));
+  }, []);
 
   /* Sync dark mode to <body> */
   useEffect(() => {
     document.body.dataset.theme = darkMode ? 'dark' : 'light';
   }, [darkMode]);
 
+  /* Wer nur ansehen darf, sieht die Knoepfe nicht, die etwas aendern. */
+  useEffect(() => {
+    document.body.classList.toggle('nur-lesen', nurLesen);
+  }, [nurLesen]);
+
   /* Sync fullscreen class */
   useEffect(() => {
     document.body.classList.toggle('fullscreen', fullscreen);
   }, [fullscreen]);
 
-  /* Der Aufruf der Seite ist bereits die Sitzung: entweder die aus der
-     Adresse, oder eine neue, deren Kennung danach in der Adresse steht.
-     Ohne erreichbaren Server bleibt der lokale Stand. */
+  /* Der Aufruf der Seite ist bereits die Sitzung: ein Freigabe-Link, ein
+     eigenes Board aus der Adresse oder eine neue Sitzung. Angefangen wird
+     erst, wenn feststeht, dass man darf -- mit Konto oder mit Link. */
   useEffect(() => {
-    sitzungOeffnen().catch(() => loadSaved());
-  }, []);
+    if (!auth) return;
+    if (auth.offline) {
+      loadSaved();
+      return;
+    }
+    if (!kontoId && !freigabe) return;
+    setState({ anmeldungNoetig: false });
+    sitzungOeffnen().catch(() => {});
+  }, [auth ? (auth.offline ? 'offline' : 'online') : null, kontoId, freigabe]);
 
   /* Global keyboard shortcuts */
   useEffect(() => {
@@ -71,6 +102,37 @@ export default function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  if (!auth) {
+    return <div className="anmeldung"><p className="anmeldung-laedt">Blankr lädt …</p></div>;
+  }
+
+  if (linkUngueltig) {
+    return (
+      <div className="anmeldung">
+        <div className="anmeldung-karte">
+          <h1>Link nicht mehr gültig</h1>
+          <p className="anmeldung-hinweis">{linkUngueltig} Bitte die Person, die dir den Link gegeben hat, um einen neuen.</p>
+          {kontoId ? (
+            <button type="button" className="knopf-primaer" onClick={() => { window.location.href = '/'; }}>Zu meinen Boards</button>
+          ) : (
+            <button type="button" className="knopf-primaer" onClick={() => { window.location.href = '/'; }}>Zur Anmeldung</button>
+          )}
+        </div>
+        <FussLinks fest />
+        <Rechtliches />
+      </div>
+    );
+  }
+
+  if (!auth.offline && !kontoId && (!freigabe || anmeldungNoetig)) {
+    return (
+      <>
+        <Anmeldung />
+        <Rechtliches />
+      </>
+    );
+  }
+
   return (
     <>
       <Canvas />
@@ -88,10 +150,16 @@ export default function App() {
           </defs>
         </svg>
         <span className="brand-text">Blankr</span>
+        {nurLesen && <span className="nur-lesen-marke">Nur ansehen</span>}
+        {auth.konto && (
+          <button type="button" className="konto-knopf" onClick={() => setState({ kontoOffen: true })} title={`Konto: ${auth.konto.email}`}>
+            {(auth.konto.name || '?').trim().charAt(0).toUpperCase()}
+          </button>
+        )}
       </div>
 
-      <Toolbar />
-      <PropertiesBar />
+      {!nurLesen && <Toolbar />}
+      {!nurLesen && <PropertiesBar />}
       <ActionBar />
       <ZoomControls />
       <LayerPanel />
@@ -100,6 +168,10 @@ export default function App() {
       <ContextMenu />
       <ChatPanel />
       <BoardPicker />
+      <FreigabeDialog />
+      <KontoDialog />
+      <Rechtliches />
+      <FussLinks />
     </>
   );
 }

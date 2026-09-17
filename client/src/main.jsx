@@ -1,3 +1,13 @@
+/* Dunkles Thema vor dem ersten Zeichnen setzen. Das stand frueher als
+   Inline-Skript in index.html; die Content-Security-Policy erlaubt nur noch
+   Skripte aus eigenen Dateien. */
+try {
+  const gespeichert = JSON.parse(localStorage.getItem('blankr_state'));
+  if (gespeichert && gespeichert.darkMode) document.body.dataset.theme = 'dark';
+} catch {
+  // nichts gespeichert
+}
+
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './App.css';

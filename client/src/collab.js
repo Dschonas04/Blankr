@@ -10,6 +10,7 @@ import {
   setState,
   showToast,
 } from './store';
+import { api } from './api';
 
 let ws = null;
 let userId = null;
@@ -80,35 +81,38 @@ export function sendClear() {}
 export function sendUndo() {}
 
 /* ── Board-Verwaltung über REST ── */
-export async function listBoards() {
-  const res = await fetch('/api/boards');
-  if (!res.ok) throw new Error('Boards nicht abrufbar');
-  return res.json();
+export function listBoards() {
+  return api('/api/boards');
 }
 
-export async function createBoard(name) {
-  const res = await fetch('/api/boards', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) throw new Error('Board konnte nicht angelegt werden');
-  return res.json();
+export function createBoard(name) {
+  return api('/api/boards', { methode: 'POST', daten: { name } });
 }
 
-export async function renameBoard(id, name) {
-  const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) throw new Error('Umbenennen fehlgeschlagen');
-  return res.json();
+export function renameBoard(id, name) {
+  return api(`/api/boards/${encodeURIComponent(id)}`, { methode: 'PATCH', daten: { name } });
 }
 
-export async function deleteBoard(id) {
-  const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Löschen fehlgeschlagen');
+export function deleteBoard(id) {
+  return api(`/api/boards/${encodeURIComponent(id)}`, { methode: 'DELETE' });
+}
+
+/* ── Freigabe-Links ──
+   Seit 1.0 ist die Board-Kennung in der Adresse kein Zugang mehr, nur noch
+   fuer den Eigentuemer ein Lesezeichen. Andere kommen ueber ?freigabe=<token>
+   hinein, den der Eigentuemer ausstellt. */
+export function freigabeAusAdresse() {
+  return new URLSearchParams(location.search).get('freigabe');
+}
+
+export function freigabeLink(token) {
+  const url = new URL(location.origin + '/');
+  url.searchParams.set('freigabe', token);
+  return url.toString();
+}
+
+export function beitrittPruefen(token) {
+  return api(`/api/beitritt/${encodeURIComponent(token)}`);
 }
 
 /* ── Sitzung ──
@@ -178,11 +182,35 @@ export function setzeEigenenNamen(name) {
 }
 
 export async function sitzungOeffnen() {
+  const freigabe = freigabeAusAdresse();
+  if (freigabe) {
+    try {
+      const ziel = await beitrittPruefen(freigabe);
+      connect(null, ziel.name, freigabe);
+      return freigabe;
+    } catch (err) {
+      if (err.status === 401) setState({ anmeldungNoetig: true });
+      else setState({ linkUngueltig: err.message });
+      throw err;
+    }
+  }
+
   const vorhanden = boardAusAdresse();
   if (vorhanden) {
-    merken(vorhanden);
-    connect(vorhanden);
-    return vorhanden;
+    // Die Kennung in der Adresse kann von jemand anderem stammen, etwa ein
+    // weitergereichter Link aus der Zeit vor den Freigaben. Dann nicht endlos
+    // gegen ein fremdes Board anrennen, sondern bei den eigenen weitermachen.
+    const erreichbar = await api(`/api/boards/${encodeURIComponent(vorhanden)}`).catch(() => null);
+    if (erreichbar) {
+      merken(vorhanden);
+      connect(vorhanden, erreichbar.name);
+      return vorhanden;
+    }
+    showToast('Dieses Board gehört jemand anderem. Bitte um einen Freigabe-Link.');
+    const u = new URL(location.href);
+    u.searchParams.delete('board');
+    u.searchParams.delete('room');
+    history.replaceState(null, '', u);
   }
 
   // Ohne Kennung in der Adresse zuerst die zuletzt benutzte Sitzung
@@ -216,23 +244,36 @@ function merken(id) {
 }
 
 /* ── Verbindung ── */
-export function connect(board, boardName) {
+let currentFreigabe = null;
+
+export function connect(board, boardName, freigabe = null) {
   intentionalClose = false;
   currentBoard = board;
+  currentFreigabe = freigabe;
   // Auch der Wechsel ueber die Boardliste zaehlt als "zuletzt benutzt".
-  merken(board);
+  if (board) merken(board);
   clearTimeout(reconnectTimer);
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const name = eigenerName();
+  const ziel = freigabe
+    ? `freigabe=${encodeURIComponent(freigabe)}`
+    : `board=${encodeURIComponent(board)}`;
+  let geoeffnet = false;
   ws = new WebSocket(
-    `${proto}://${location.host}/ws?board=${encodeURIComponent(board)}&site=${SITE}` +
+    `${proto}://${location.host}/ws?${ziel}&site=${SITE}` +
       (name ? `&name=${encodeURIComponent(name)}` : ''),
   );
 
   ws.onopen = () => {
+    geoeffnet = true;
     reconnectDelay = 1000;
-    setState({ collabConnected: true, collabRoom: board, collabBoardName: boardName || board });
+    setState({
+      collabConnected: true,
+      collabRoom: board,
+      collabFreigabe: freigabe,
+      collabBoardName: boardName || board,
+    });
   };
 
   ws.onmessage = (ev) => {
@@ -247,7 +288,12 @@ export function connect(board, boardName) {
     switch (msg.type) {
       case 'init':
         userId = msg.userId;
-        setState({ collabUsers: msg.users, collabBoardName: msg.boardName || board });
+        setState({
+          collabUsers: msg.users,
+          collabBoardName: msg.boardName || board,
+          collabRolle: msg.rolle,
+          nurLesen: msg.rolle === 'ansehen',
+        });
         // Der Server ist die Quelle der Wahrheit; der lokale Stand wird
         // ersetzt, nicht zusammengefuehrt. Alles andere fuehrt dazu, dass
         // ein alter Autosave beim Beitritt fremde Boards verunreinigt.
@@ -318,16 +364,41 @@ export function connect(board, boardName) {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = async () => {
     setState({ collabConnected: false, collabUsers: [], remoteCursors: {} });
     if (intentionalClose) return;
+    // Kam die Verbindung gar nicht erst zustande, liegt es meist nicht am Netz,
+    // sondern an der Berechtigung: Sitzung abgelaufen, Link zurueckgezogen.
+    // Dann hilft kein Wiederholen, sondern nur eine klare Ansage.
+    if (!geoeffnet) {
+      try {
+        if (currentFreigabe) {
+          await beitrittPruefen(currentFreigabe);
+        } else {
+          const status = await api('/api/status');
+          if (!status.konto) {
+            setState({ auth: status, anmeldungNoetig: true });
+            return;
+          }
+        }
+      } catch (err) {
+        if (err.status === 401) {
+          setState({ anmeldungNoetig: true });
+          return;
+        }
+        if (err.status === 404) {
+          setState({ linkUngueltig: err.message });
+          return;
+        }
+      }
+    }
     // Automatisch neu verbinden. Beim Beitritt kommt ohnehin ein voller
     // Schnappschuss, damit ist der Zustand nach jedem Aussetzer wieder
     // deckungsgleich -- ohne dass jemand etwas neu laden muss.
     showToast(`Verbindung verloren, neuer Versuch in ${Math.round(reconnectDelay / 1000)} s`);
     reconnectTimer = setTimeout(() => {
       reconnectDelay = Math.min(reconnectDelay * 2, 15000);
-      connect(currentBoard, boardName);
+      connect(currentBoard, boardName, currentFreigabe);
     }, reconnectDelay);
   };
 }
@@ -341,7 +412,11 @@ export function disconnect() {
   }
   userId = null;
   currentBoard = null;
+  currentFreigabe = null;
   setState({
+    collabFreigabe: null,
+    collabRolle: null,
+    nurLesen: false,
     collabConnected: false,
     collabRoom: null,
     collabBoardName: null,
@@ -351,5 +426,6 @@ export function disconnect() {
   const u = new URL(window.location);
   u.searchParams.delete('board');
   u.searchParams.delete('room');
+  u.searchParams.delete('freigabe');
   history.replaceState(null, '', u);
 }

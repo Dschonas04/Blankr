@@ -35,6 +35,13 @@ type client struct {
 	conn *websocket.Conn
 	send chan []byte
 	once sync.Once
+	// rolle ist "bearbeiten" oder "ansehen". Wer nur ansehen darf, dessen
+	// Operationen verwirft der Server, egal was der Client schickt.
+	rolle string
+	// freigabe ist die Rolle des Links, ueber den der Client kam, leer fuer
+	// Eigentuemer und Administratoren. Wird der Link zurueckgezogen, fliegen
+	// genau diese Verbindungen raus.
+	freigabe string
 }
 
 // close beendet den Sendekanal genau einmal -- sonst kann ein zweiter
@@ -95,6 +102,52 @@ func (h *Hub) onlineCount(id string) int {
 // aktiven Verbindungen wird nicht geloescht.
 func (h *Hub) busy(id string) bool {
 	return h.onlineCount(id) > 0
+}
+
+// flushAll schreibt alle geladenen Boards sofort, etwa vor einer Sicherung.
+func (h *Hub) flushAll() {
+	h.mu.Lock()
+	boards := make([]*Board, 0, len(h.boards))
+	for _, b := range h.boards {
+		boards = append(boards, b)
+	}
+	h.mu.Unlock()
+	for _, b := range boards {
+		b.flush(h.store)
+	}
+}
+
+// trennen beendet Verbindungen eines Boards, fuer die treffer wahr ist. Die
+// Leseschleife raeumt danach selbst auf.
+func (h *Hub) trennen(id string, treffer func(*client) bool) int {
+	h.mu.Lock()
+	b, ok := h.boards[id]
+	h.mu.Unlock()
+	if !ok {
+		return 0
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for c := range b.clients {
+		if treffer(c) {
+			c.conn.Close()
+			n++
+		}
+	}
+	return n
+}
+
+func (h *Hub) verbindungen() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := 0
+	for _, b := range h.boards {
+		b.mu.Lock()
+		n += len(b.clients)
+		b.mu.Unlock()
+	}
+	return n
 }
 
 func (h *Hub) drop(id string) {

@@ -17,7 +17,8 @@ COPY shared/ ../shared/
 COPY server/ ./
 # Statisch gelinkt, damit das Ergebnis ohne libc auskommt und in ein
 # leeres Image passt.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /blankr .
+ARG VERSION=1.0.0
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /blankr .
 
 # --- Auslieferung ---
 FROM alpine:3.21

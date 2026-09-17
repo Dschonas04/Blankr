@@ -10,6 +10,13 @@ services:
       - "8080:8080"
     environment:
       BLANKR_DATA: /data
+      # Konten legt die Verwaltung an; "offen" erlaubt Selbstregistrierung.
+      BLANKR_REGISTRIERUNG: ${BLANKR_REGISTRIERUNG:-geschlossen}
+      # Freigabe-Links ohne Konto nutzbar ("nein": nur mit Konto).
+      BLANKR_GAESTE: ${BLANKR_GAESTE:-ja}
+      # Hinter einem Reverse Proxy mit TLS auf "ja" setzen.
+      BLANKR_HINTER_PROXY: ${BLANKR_HINTER_PROXY:-nein}
+      BLANKR_METRIKEN: ${BLANKR_METRIKEN:-nein}
     volumes:
       # Ohne dieses Volume waeren alle Boards nach einem Neuaufbau weg.
       - blankr-data:/data

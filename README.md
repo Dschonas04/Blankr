@@ -60,7 +60,7 @@ Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bear
 - **CRDT-Zusammenführung** – gleichzeitiges Zeichnen, Verschieben und Löschen läuft zusammen, statt sich zu überschreiben
 - **Automatisches Wiederverbinden** – nach einem Aussetzer wird der vollständige Stand neu abgeglichen
 - **Rückgängig ohne Kollateralschaden** – Strg+Z nimmt nur die eigenen Änderungen zurück, nicht die der anderen
-- **Beitritt über Link** – `?board=<id>`, alte `?room=`-Links funktionieren weiter
+- **Freigabe-Links** – je Board ein Link zum Bearbeiten und einer zum Ansehen, einzeln zurückziehbar
 - **Nutzerfarben, Remote-Cursor und Chat** – wie gehabt
 
 ### Weitere Features
@@ -69,6 +69,98 @@ Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bear
 - **Drag & Drop Bilder** – Bilder direkt auf das Canvas ziehen
 - **Autosave** – Automatisches Speichern im `localStorage`
 - **Touch-Support** – Vollständige Touch-Unterstützung inkl. Pinch-Zoom
+
+## Konten, Rechte und Freigaben
+
+Blankr ist für den Einsatz in Teams und Firmen gebaut: Boards gehören einem
+Konto, und niemand sonst sieht oder ändert sie, solange der Eigentümer sie nicht
+teilt.
+
+| Rolle | Darf |
+|---|---|
+| **Administrator** | alles, was Nutzer dürfen; dazu alle Boards sehen und verwalten, Konten anlegen, sperren, Passwörter setzen und löschen, Impressum und Datenschutzerklärung pflegen, Datensicherung herunterladen |
+| **Nutzer** | eigene Boards anlegen, umbenennen, löschen und teilen; eigenes Konto verwalten, Daten exportieren, Konto löschen |
+| **Gast mit Bearbeiten-Link** | das eine Board bearbeiten, ohne Konto |
+| **Gast mit Ansehen-Link** | das eine Board live mitverfolgen, ohne etwas ändern zu können – auch der Server verwirft jede Änderung |
+
+- **Einrichtung** – Beim ersten Aufruf fragt Blankr nach dem ersten Konto; es
+  wird Administrator. Boards aus der Zeit vor den Konten gehen an dieses Konto.
+- **Registrierung** – standardmäßig geschlossen. Konten legt ein Administrator
+  unter *Konto → Konten* an; mit `BLANKR_REGISTRIERUNG=offen` darf sich jeder
+  selbst registrieren.
+- **Freigaben** – *Teilen* stellt einen Link zum Bearbeiten und einen zum
+  Ansehen aus. Wird ein Link zurückgezogen, werden alle, die über ihn verbunden
+  sind, sofort getrennt, und er wird nie wieder gültig. Mit
+  `BLANKR_GAESTE=nein` brauchen auch Link-Inhaber ein Konto.
+- **Ausscheidende Mitarbeiter** – Beim Löschen eines Kontos durch einen
+  Administrator gehen dessen Boards an den Administrator über, statt zu
+  verschwinden.
+
+## Betrieb
+
+### Einstellungen
+
+| Variable | Vorgabe | Bedeutung |
+|---|---|---|
+| `PORT` | `8080` | Port des Dienstes |
+| `BLANKR_DATA` | `data` (`/data` im Container) | Datenverzeichnis: Boards, Konten, rechtliche Texte |
+| `BLANKR_REGISTRIERUNG` | `geschlossen` | `offen` erlaubt Selbstregistrierung |
+| `BLANKR_GAESTE` | `ja` | `nein`: Freigabe-Links funktionieren nur mit Konto |
+| `BLANKR_SITZUNG_TAGE` | `14` | Laufzeit einer Anmeldung; wird bei Nutzung verlängert |
+| `BLANKR_HINTER_PROXY` | `nein` | `ja`: `X-Forwarded-For`/`-Proto` des Reverse Proxy auswerten |
+| `BLANKR_SICHERES_COOKIE` | `nein` | `ja`: Sitzungs-Cookie immer mit `Secure` |
+| `BLANKR_HERKUENFTE` | – | weitere erlaubte Origins für WebSockets, kommagetrennt |
+| `BLANKR_METRIKEN` | `nein` | `ja`: Prometheus-Metriken unter `/metrics` |
+
+### Im Internet betreiben
+
+Blankr gehört hinter einen Reverse Proxy mit TLS (nginx, Caddy, Traefik). Der
+Proxy muss WebSockets auf `/ws` durchreichen. Dann `BLANKR_HINTER_PROXY=ja`
+setzen, damit die Anfragebremse die echte Client-IP sieht und das Cookie das
+`Secure`-Attribut bekommt.
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 1h;
+}
+```
+
+### Datensicherung
+
+- **Über die Oberfläche** – *Konto → Sicherung* lädt das Datenverzeichnis als
+  `tar.gz` (vorher werden alle offenen Boards geschrieben; Sitzungen sind nicht
+  enthalten).
+- **Auf dem Host** – das Volume `blankr-data` sichern, z. B.
+  `docker run --rm -v blankr-data:/d -v "$PWD":/b alpine tar czf /b/blankr.tar.gz -C /d .`
+- **Wiederherstellen** – Dienst stoppen, Archiv in das Datenverzeichnis
+  entpacken, Dienst starten. Alle melden sich neu an.
+
+### Datenschutz und Rechtliches
+
+- Blankr lädt nichts von fremden Servern (keine Webfonts, kein CDN, keine
+  Analyse) und setzt nur ein technisch notwendiges Sitzungs-Cookie.
+- *Konto → Rechtliches* pflegt **Impressum** und **Datenschutzerklärung**; beide
+  sind auf jeder Seite unten verlinkt. Die mitgelieferte Datenschutzvorlage
+  beschreibt die tatsächliche Verarbeitung und muss vom Betreiber geprüft
+  werden.
+- Jeder Nutzer kann unter *Konto → Meine Daten* alle eigenen Daten als JSON
+  herunterladen (Art. 15/20 DSGVO) und sein Konto samt Boards löschen (Art. 17).
+- Das Server-Protokoll enthält weder IP-Adressen noch Adressparameter.
+
+### Sicherheit
+
+Passwörter mit bcrypt, Sitzungs-Tokens nur als SHA-256 gespeichert, Dateien mit
+Konten und Sitzungen mit Rechten `0600`. Content-Security-Policy ohne fremde
+Quellen, Schutz gegen CSRF über einen Pflicht-Header, Prüfung der
+WebSocket-Herkunft, Anfragebremse je IP und je E-Mail-Adresse. Details und
+Meldeweg für Lücken: [SECURITY.md](SECURITY.md).
 
 ## Schnellstart
 
@@ -141,7 +233,7 @@ docker compose down
 
 ### Tech-Stack
 - **Frontend** – React 19, Vite 6, HTML5 Canvas 2D
-- **Backend** – Go 1.25, `gorilla/websocket`, sonst nur Standardbibliothek
+- **Backend** – Go 1.25, `gorilla/websocket`, `golang.org/x/crypto/bcrypt`, sonst nur Standardbibliothek
 - **Runtime** – statisch gelinkte Binärdatei in Alpine, Docker
 - **State** – Custom Store mit `useSyncExternalStore` (kein Redux/Zustand)
 - **Synchronisation** – LWW-Element-Set, zweimal implementiert (JS und Go),
@@ -171,7 +263,8 @@ Blankr/
 │   │   ├── App.jsx           # Haupt-Komponente + Keyboard Shortcuts
 │   │   ├── App.css           # Styles (inkl. Dark Mode Tokens)
 │   │   ├── store.js          # State, Undo/Redo, Abgleich mit dem CRDT
-│   │   ├── collab.js         # WebSocket-Transport + Board-API
+│   │   ├── collab.js         # WebSocket-Transport + Board-API + Freigaben
+│   │   ├── api.js            # Server-Aufrufe (Cookie, CSRF-Kopf, Fehler)
 │   │   ├── sync/project.js   # Ebenen <-> CRDT-Dokument
 │   │   ├── main.jsx          # Entry Point
 │   │   └── components/
@@ -185,6 +278,10 @@ Blankr/
 │   │       │   ├── events.js     # Zeiger + Render-Schleife
 │   │       │   └── index.js
 │   │       ├── BoardPicker.jsx   # Board-Verwaltung
+│   │       ├── Anmeldung.jsx     # Einrichtung, Anmeldung, Registrierung
+│   │       ├── FreigabeDialog.jsx # Links zum Bearbeiten/Ansehen
+│   │       ├── KontoDialog.jsx   # Konto, Datenexport, Verwaltung
+│   │       ├── Rechtliches.jsx   # Impressum, Datenschutz
 │   │       ├── Toolbar.jsx
 │   │       ├── PropertiesBar.jsx
 │   │       ├── ActionBar.jsx

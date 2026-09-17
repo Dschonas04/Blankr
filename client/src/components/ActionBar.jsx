@@ -33,6 +33,7 @@ export default function ActionBar() {
   const bgPattern = useStore(s => s.bgPattern);
   const gridSnap = useStore(s => s.gridSnap);
   const chatOpen = useStore(s => s.chatOpen);
+  const angemeldet = useStore(s => !!s.auth?.konto);
 
   const [bgOpen, setBgOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -248,9 +249,9 @@ export default function ActionBar() {
           <button className={`a-btn${darkMode ? ' active' : ''}`} title="Dark Mode (D)" onClick={() => setState(s => ({ darkMode: !s.darkMode }))}>
             <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z" /></svg>
           </button>
-          <button className={`a-btn${collabConnected ? ' active' : ''}`} title="Boards & Zusammenarbeit" onClick={handleCollab}>
+          {angemeldet && <button className={`a-btn${collabConnected ? ' active' : ''}`} title="Boards & Zusammenarbeit" onClick={handleCollab}>
             <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-          </button>
+          </button>}
           <button className={`a-btn${gridSnap ? ' active' : ''}`} title="Raster-Snap" onClick={() => setState(s => ({ gridSnap: !s.gridSnap }))}>
             <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3z" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18" stroke="currentColor" strokeWidth="0.5" opacity="0.4"/><circle cx="9" cy="9" r="2" fill="currentColor"/></svg>
           </button>

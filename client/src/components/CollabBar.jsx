@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
-import { eigenerName, setzeEigenenNamen, sitzungsLink } from '../collab';
-import { useStore, showToast } from '../store';
+import { eigenerName, freigabeLink, setzeEigenenNamen } from '../collab';
+import { setState, useStore, showToast } from '../store';
 import { IconKette, IconPruefen, IconStift } from './Icons';
 
 /**
@@ -34,6 +34,9 @@ export default function CollabBar() {
   const users = useStore((s) => s.collabUsers);
   const cursors = useStore((s) => s.remoteCursors);
   const boardName = useStore((s) => s.collabBoardName);
+  const board = useStore((s) => s.collabRoom);
+  const freigabe = useStore((s) => s.collabFreigabe);
+  const rolle = useStore((s) => s.collabRolle);
   const [kopiert, setKopiert] = useState(false);
   const [nameOffen, setNameOffen] = useState(false);
   const [entwurf, setEntwurf] = useState(eigenerName());
@@ -47,7 +50,14 @@ export default function CollabBar() {
   const rest = sortiert.length - gezeigt.length;
 
   function linkKopieren() {
-    const link = sitzungsLink();
+    // Eigentuemer teilen ueber den Freigabe-Dialog: die Board-Kennung in der
+    // Adresse bringt niemanden hinein. Gaeste geben den Link weiter, ueber den
+    // sie selbst gekommen sind -- mit genau den Rechten, die er hat.
+    if (!freigabe) {
+      setState({ freigabeOffen: board });
+      return;
+    }
+    const link = freigabeLink(freigabe);
     navigator.clipboard
       .writeText(link)
       .then(() => {
@@ -65,7 +75,7 @@ export default function CollabBar() {
       {connected && (
         <div className="ui-collab">
           <div className="collab-sitzung">
-            <span className="collab-marke">Sitzung</span>
+            <span className="collab-marke">{rolle === 'ansehen' ? 'Nur ansehen' : freigabe ? 'Gast' : 'Sitzung'}</span>
             <span className="collab-board" title={boardName}>
               {boardName}
             </span>
@@ -137,9 +147,9 @@ export default function CollabBar() {
             </button>
           )}
 
-          <button className="share-btn" onClick={linkKopieren} title={sitzungsLink()}>
+          <button className="share-btn" onClick={linkKopieren} title={freigabe ? 'Link kopieren' : 'Board teilen'}>
             {kopiert ? <IconPruefen /> : <IconKette />}
-            {kopiert ? 'Kopiert' : 'Link teilen'}
+            {kopiert ? 'Kopiert' : freigabe ? 'Link kopieren' : 'Teilen'}
           </button>
         </div>
       )}

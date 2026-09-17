@@ -3,18 +3,20 @@ package main
 // Board-Ablage.
 //
 // Ein Board ist eine JSON-Datei mit dem CRDT-Schnappschuss, dazu ein Index mit
-// Namen und Zeitstempeln. Bewusst keine Datenbank: die Datenmenge ist klein,
-// und ein Verzeichnis mit lesbaren Dateien laesst sich sichern, kopieren und
-// im Zweifel von Hand reparieren.
+// Namen, Eigentuemer, Freigaben und Zeitstempeln. Bewusst keine Datenbank: die
+// Datenmenge ist klein, und ein Verzeichnis mit lesbaren Dateien laesst sich
+// sichern, kopieren und im Zweifel von Hand reparieren.
 //
 // Geschrieben wird immer erst in eine temporaere Datei und dann umbenannt.
 // os.Rename ist auf einem POSIX-Dateisystem atomar -- ein Absturz mitten im
 // Schreiben kann so kein halbes Board hinterlassen.
+//
+// Zugang: Ein Board gehoert einem Konto. Andere kommen nur ueber einen
+// Freigabe-Link hinein, und davon gibt es zwei, einen zum Bearbeiten und einen
+// zum Ansehen. Jeder laesst sich einzeln zurueckziehen. Die Board-Kennung
+// selbst gibt seit 1.0 keinen Zugang mehr.
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +25,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"encoding/json"
+)
+
+const (
+	FreigabeBearbeiten = "bearbeiten"
+	FreigabeAnsehen    = "ansehen"
 )
 
 type BoardMeta struct {
@@ -31,6 +40,11 @@ type BoardMeta struct {
 	CreatedAt int64  `json:"createdAt"`
 	UpdatedAt int64  `json:"updatedAt"`
 	Online    int    `json:"online"`
+	// Owner ist die Kennung des Kontos. Leer bei Boards aus der Zeit vor den
+	// Konten; die bekommt das erste Administratorkonto.
+	Owner     string `json:"owner,omitempty"`
+	EditToken string `json:"editToken,omitempty"`
+	ViewToken string `json:"viewToken,omitempty"`
 }
 
 type Store struct {
@@ -117,6 +131,8 @@ func (s *Store) jetzt() int64 {
 	return t
 }
 
+// List liefert alle Boards samt Freigabe-Tokens. Was davon wer sehen darf,
+// entscheidet der Handler.
 func (s *Store) List() []BoardMeta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -139,24 +155,13 @@ func (s *Store) Get(id string) (BoardMeta, bool) {
 }
 
 // idLaenge ist die Laenge der Kennung in Bytes.
-//
-// Frueher waren es vier, also 32 Bit. Das reichte, solange ein Board ueber
-// eine Liste ausgewaehlt wurde. Seit der Aufruf der Seite selbst eine Sitzung
-// eroeffnet, ist der Link der einzige Zugang zu ihr: wer die Kennung kennt,
-// ist drin. Vier Milliarden Moeglichkeiten laufen einem Skript in Stunden
-// durch, sechzehn Byte nicht.
-//
-// Bestehende Boards behalten ihre kurze Kennung, hier steht nur, wie neue
-// entstehen.
 const idLaenge = 16
 
-func (s *Store) Create(name string) BoardMeta {
+func (s *Store) Create(name, owner string) BoardMeta {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	buf := make([]byte, idLaenge)
-	rand.Read(buf)
 	now := s.jetzt()
-	b := &BoardMeta{ID: hex.EncodeToString(buf), Name: trim(name, 80), CreatedAt: now, UpdatedAt: now}
+	b := &BoardMeta{ID: zufall(idLaenge), Name: trim(name, 80), CreatedAt: now, UpdatedAt: now, Owner: owner}
 	s.boards[b.ID] = b
 	s.persistIndex()
 	return *b
@@ -185,6 +190,117 @@ func (s *Store) Remove(id string) bool {
 	s.persistIndex()
 	os.Remove(s.boardFile(id))
 	return true
+}
+
+// Freigeben stellt einen Link fuer die Rolle aus oder gibt den bestehenden
+// zurueck. 32 Bytes Zufall: der Link ist die einzige Berechtigung.
+func (s *Store) Freigeben(id, rolle string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.boards[id]
+	if !ok {
+		return "", false
+	}
+	switch rolle {
+	case FreigabeBearbeiten:
+		if b.EditToken == "" {
+			b.EditToken = zufall(32)
+		}
+		s.persistIndex()
+		return b.EditToken, true
+	case FreigabeAnsehen:
+		if b.ViewToken == "" {
+			b.ViewToken = zufall(32)
+		}
+		s.persistIndex()
+		return b.ViewToken, true
+	}
+	return "", false
+}
+
+// FreigabeZurueckziehen macht einen Link ungueltig. Wer ihn neu ausstellt,
+// bekommt einen anderen -- ein zurueckgezogener Link wird nie wieder gueltig.
+func (s *Store) FreigabeZurueckziehen(id, rolle string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, ok := s.boards[id]
+	if !ok {
+		return false
+	}
+	switch rolle {
+	case FreigabeBearbeiten:
+		b.EditToken = ""
+	case FreigabeAnsehen:
+		b.ViewToken = ""
+	default:
+		return false
+	}
+	s.persistIndex()
+	return true
+}
+
+// PerToken sucht das Board zu einem Freigabe-Link.
+func (s *Store) PerToken(token string) (BoardMeta, string, bool) {
+	if len(token) < 32 {
+		return BoardMeta{}, "", false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, b := range s.boards {
+		if b.EditToken != "" && b.EditToken == token {
+			return *b, FreigabeBearbeiten, true
+		}
+		if b.ViewToken != "" && b.ViewToken == token {
+			return *b, FreigabeAnsehen, true
+		}
+	}
+	return BoardMeta{}, "", false
+}
+
+// WaisenZuordnen gibt allen Boards ohne Eigentuemer einen. Aufgerufen, wenn das
+// erste Konto entsteht -- so verschwinden die Boards aus der Zeit davor nicht,
+// sondern gehoeren dem, der die Instanz einrichtet.
+func (s *Store) WaisenZuordnen(owner string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, b := range s.boards {
+		if b.Owner == "" {
+			b.Owner = owner
+			n++
+		}
+	}
+	if n > 0 {
+		s.persistIndex()
+	}
+	return n
+}
+
+// Uebertragen gibt alle Boards eines Kontos einem anderen.
+func (s *Store) Uebertragen(von, an string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, b := range s.boards {
+		if b.Owner == von {
+			b.Owner = an
+			n++
+		}
+	}
+	if n > 0 {
+		s.persistIndex()
+	}
+	return n
+}
+
+func (s *Store) VonKonto(owner string) []BoardMeta {
+	var out []BoardMeta
+	for _, b := range s.List() {
+		if b.Owner == owner {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 func (s *Store) LoadSnapshot(id string) Snapshot {
