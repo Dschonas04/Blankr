@@ -21,7 +21,7 @@ ARG VERSION=1.0.0
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /blankr .
 
 # --- Auslieferung ---
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates wget && adduser -D -u 10001 blankr
 COPY --from=server /blankr /usr/local/bin/blankr
 COPY --from=client /app/client/dist /srv/client/dist
