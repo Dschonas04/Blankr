@@ -9,7 +9,7 @@ COPY client/ ./client/
 RUN cd client && npm run build
 
 # --- Server bauen ---
-FROM golang:1.25-alpine AS server
+FROM golang:1.27-alpine AS server
 WORKDIR /src
 COPY server/go.mod server/go.sum ./
 RUN go mod download
