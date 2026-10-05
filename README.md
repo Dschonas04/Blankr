@@ -1,8 +1,27 @@
 # Blankr – Whiteboard
 
+[![CI](https://github.com/Dschonas04/Blankr/actions/workflows/ci.yml/badge.svg)](https://github.com/Dschonas04/Blankr/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/Dschonas04/Blankr?label=Version)](CHANGELOG.md)
+[![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8)](https://go.dev)
+[![React](https://img.shields.io/badge/React-19-61dafb)](https://react.dev)
+[![Lizenz: BUSL-1.1](https://img.shields.io/badge/Lizenz-BUSL--1.1-orange)](LICENSE)
+
 Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und einen Go-Server mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
 
 Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bearbeiten wird über einen CRDT zusammengeführt, nicht über ein einfaches Weiterreichen von Ereignissen — auch nach einem Verbindungsabbruch sehen alle Beteiligten wieder denselben Stand.
+
+## Inhalt
+
+- [Features](#features)
+- [Konten, Rechte und Freigaben](#konten-rechte-und-freigaben)
+- [Betrieb](#betrieb)
+- [Schnellstart](#schnellstart)
+- [Tastenkombinationen](#tastenkombinationen)
+- [Architektur](#architektur)
+- [Projektstruktur](#projektstruktur)
+- [Grenzen](#grenzen)
+- [Mitmachen](#mitmachen)
+- [Lizenz](#lizenz)
 
 ## Features
 
@@ -161,6 +180,18 @@ Konten und Sitzungen mit Rechten `0600`. Content-Security-Policy ohne fremde
 Quellen, Schutz gegen CSRF über einen Pflicht-Header, Prüfung der
 WebSocket-Herkunft, Anfragebremse je IP und je E-Mail-Adresse. Details und
 Meldeweg für Lücken: [SECURITY.md](SECURITY.md).
+
+### Laufzeit
+
+- **Health-Check** – `/healthz` meldet Anzahl der Boards und offenen Sitzungen
+- **Restart-Policy** – der Container startet nach einem Ausfall selbst neu
+- **Datenvolume** – Boards liegen unter `/data` (`BLANKR_DATA`); ohne eingebundenes
+  Volume sind sie beim nächsten Image-Build weg
+- **Geordnetes Beenden** – bei `SIGTERM` werden offene Boards noch geschrieben
+
+**Nur eine Instanz.** Der Board-Zustand liegt im Speicher des jeweiligen
+Prozesses. Zwei Repliken hinter einem Load Balancer würden zwei getrennte
+Wahrheiten führen — dafür bräuchte es einen gemeinsamen Nachrichtenbus.
 
 ## Schnellstart
 
@@ -347,27 +378,20 @@ nicht auseinanderlaufen, lesen beide Testläufe dieselbe Datei
 und mit doppelt zugestellten Operationen. Wer die Regel auf einer Seite
 ändert, ohne die andere anzupassen, bekommt sofort einen roten Testlauf.
 
-## Betrieb
-
-- **Health-Check** – `/healthz` meldet Anzahl der Boards und offenen Sitzungen
-- **Restart-Policy** – der Container startet nach einem Ausfall selbst neu
-- **Datenvolume** – Boards liegen unter `/data` (`BLANKR_DATA`); ohne eingebundenes
-  Volume sind sie beim nächsten Image-Build weg
-- **Geordnetes Beenden** – bei `SIGTERM` werden offene Boards noch geschrieben
-
-**Nur eine Instanz.** Der Board-Zustand liegt im Speicher des jeweiligen
-Prozesses. Zwei Repliken hinter einem Load Balancer würden zwei getrennte
-Wahrheiten führen — dafür bräuchte es einen gemeinsamen Nachrichtenbus.
-
 ## Grenzen
 
-- **Kein Zugriffsschutz.** Wer die URL kennt, kann jedes Board öffnen und ändern.
-  Für den Betrieb im Internet gehört eine Authentifizierung davor.
 - **Text wird als Ganzes zusammengeführt.** Ändern zwei Leute gleichzeitig
   denselben Textblock, gewinnt der spätere Schreiber — es wird nicht
   zeichenweise gemischt.
 - **Sticky Notes und Chat werden nicht synchronisiert.** Beide bleiben lokal
   bzw. flüchtig.
+
+## Mitmachen
+
+Fehlerberichte, Ideen und Pull Requests sind willkommen, siehe
+[CONTRIBUTING.md](CONTRIBUTING.md). Sicherheitslücken bitte vertraulich
+melden, siehe [SECURITY.md](SECURITY.md). Was sich in welcher Version
+geändert hat, steht in [CHANGELOG.md](CHANGELOG.md).
 
 ## Lizenz
 
