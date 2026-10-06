@@ -2,11 +2,11 @@
 
 [![CI](https://github.com/Dschonas04/Blankr/actions/workflows/ci.yml/badge.svg)](https://github.com/Dschonas04/Blankr/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/Dschonas04/Blankr?label=Version)](CHANGELOG.md)
-[![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8)](https://go.dev)
+[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8)](https://go.dev)
 [![React](https://img.shields.io/badge/React-19-61dafb)](https://react.dev)
 [![Lizenz: BUSL-1.1](https://img.shields.io/badge/Lizenz-BUSL--1.1-orange)](LICENSE)
 
-Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 6) als Frontend und einen Go-Server mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
+Blankr ist eine kollaborative, browserbasierte Whiteboard-Anwendung. Sie nutzt React 19 (Vite 8) als Frontend und einen Go-Server mit WebSockets für Echtzeit-Zusammenarbeit. Alles läuft komplett containerisiert über Docker.
 
 Boards liegen auf dem Server und überstehen einen Neustart. Gleichzeitiges Bearbeiten wird über einen CRDT zusammengeführt, nicht über ein einfaches Weiterreichen von Ereignissen — auch nach einem Verbindungsabbruch sehen alle Beteiligten wieder denselben Stand.
 
@@ -198,7 +198,7 @@ Wahrheiten führen — dafür bräuchte es einen gemeinsamen Nachrichtenbus.
 ### Voraussetzungen
 
 - [Docker](https://www.docker.com/) und [Docker Compose](https://docs.docker.com/compose/)
-- Für die Entwicklung ohne Container: Node.js 22 und Go 1.25
+- Für die Entwicklung ohne Container: Node.js 26 und Go 1.26
 
 ### Mit Docker starten
 
@@ -263,8 +263,8 @@ docker compose down
 ## Architektur
 
 ### Tech-Stack
-- **Frontend** – React 19, Vite 6, HTML5 Canvas 2D
-- **Backend** – Go 1.25, `gorilla/websocket`, `golang.org/x/crypto/bcrypt`, sonst nur Standardbibliothek
+- **Frontend** – React 19, Vite 8, HTML5 Canvas 2D
+- **Backend** – Go 1.26, `gorilla/websocket`, `golang.org/x/crypto/bcrypt`, sonst nur Standardbibliothek
 - **Runtime** – statisch gelinkte Binärdatei in Alpine, Docker
 - **State** – Custom Store mit `useSyncExternalStore` (kein Redux/Zustand)
 - **Synchronisation** – LWW-Element-Set, zweimal implementiert (JS und Go),
