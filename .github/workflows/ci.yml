@@ -31,6 +31,10 @@ env:
   DIENST: blankr-whiteboard
   HAFEN: 8080
 
+# Die Jobs lesen nur den Code; ausgerollt wird über den Runner, nicht über das Token.
+permissions:
+  contents: read
+
 jobs:
   pruefen:
     runs-on: [self-hosted, homelab]
