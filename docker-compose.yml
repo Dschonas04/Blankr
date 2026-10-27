@@ -7,7 +7,8 @@ services:
     container_name: blankr-whiteboard
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # Im Homelab setzt der CI-Workflow BINDUNG auf 127.0.0.1:28080; TLS macht dort Caddy auf 8080.
+      - "${BINDUNG:-8080}:8080"
     environment:
       BLANKR_DATA: /data
       # Konten legt die Verwaltung an; "offen" erlaubt Selbstregistrierung.
