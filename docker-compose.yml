@@ -17,6 +17,7 @@ services:
       BLANKR_GAESTE: ${BLANKR_GAESTE:-ja}
       # Hinter einem Reverse Proxy mit TLS auf "ja" setzen.
       BLANKR_HINTER_PROXY: ${BLANKR_HINTER_PROXY:-nein}
+      BLANKR_SICHERES_COOKIE: ${BLANKR_SICHERES_COOKIE:-nein}
       BLANKR_METRIKEN: ${BLANKR_METRIKEN:-nein}
     volumes:
       # Ohne dieses Volume waeren alle Boards nach einem Neuaufbau weg.
