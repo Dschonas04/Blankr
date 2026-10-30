@@ -30,11 +30,11 @@ env:
   ABBILD: blankr
   DIENST: blankr-whiteboard
   HAFEN: 8080
-  BINDUNG: "8080"
-  HAFEN_INTERN: 8080
-  # Direkt per HTTP im LAN, kein Proxy davor
-  BLANKR_HINTER_PROXY: "nein"
-  BLANKR_SICHERES_COOKIE: "nein"
+  BINDUNG: 127.0.0.1:28080
+  HAFEN_INTERN: 28080
+  # Der Dienst lauscht nur lokal; Caddy nimmt Port 8080 per HTTPS an (Homelab-PKI) und setzt X-Forwarded-For selbst
+  BLANKR_HINTER_PROXY: "ja"
+  BLANKR_SICHERES_COOKIE: "ja"
 
 # Die Jobs lesen nur den Code; ausgerollt wird über den Runner, nicht über das Token.
 permissions:
@@ -167,5 +167,5 @@ jobs:
             echo "### Blankr"
             echo ""
             echo "- Commit: \`${GITHUB_SHA::7}\`"
-            echo "- Erreichbar: http://10.0.2.43:${HAFEN}"
+            echo "- Erreichbar: https://10.0.2.43:${HAFEN}"
           } >> "$GITHUB_STEP_SUMMARY"
